@@ -4,13 +4,22 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyBxIlnHzH9pNxC5474PyH-EkX_n_fKG1lM",
-    authDomain: "the-social-studio-c3dc1.firebaseapp.com",
-    projectId: "the-social-studio-c3dc1",
-    storageBucket: "the-social-studio-c3dc1.firebasestorage.app",
-    messagingSenderId: "832553963166",
-    appId: "1:832553963166:web:a9c867f834f20a96f3b58f",
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
+
+// Ensure all config values are present
+const missingVars = Object.entries(firebaseConfig)
+    .filter(([_, value]) => !value)
+    .map(([key]) => `NEXT_PUBLIC_FIREBASE_${key.replace(/[A-Z]/g, letter => `_${letter}`).toUpperCase()}`);
+
+if (missingVars.length > 0) {
+    throw new Error(`Missing required Firebase environment variables: ${missingVars.join(", ")}`);
+}
 
 const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 
