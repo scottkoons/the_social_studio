@@ -1,0 +1,28 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Top-level users collection
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      // Subcollection for post days
+      match /post_days/{date} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // Subcollection for assets
+      match /assets/{assetId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+    
+    // Disallow global access to legacy root-level collections
+    match /post_days/{any} {
+      allow read, write: if false;
+    }
+    match /assets/{any} {
+      allow read, write: if false;
+    }
+  }
+}
