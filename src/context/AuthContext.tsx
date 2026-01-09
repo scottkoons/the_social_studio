@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import {
     onAuthStateChanged,
     signInWithEmailAndPassword,
@@ -28,30 +28,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [workspaceId, setWorkspaceId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
-    const [workspaceLoading, setWorkspaceLoading] = useState(true);
+    const [workspaceLoading, setWorkspaceLoading] = useState(false);
+
+    // Track if component is mounted to prevent state updates after unmount
+    const isMountedRef = useRef(true);
 
     // 1. Monitor Auth State
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+            if (!isMountedRef.current) return;
+
             setUser(firebaseUser);
             setLoading(false);
+
+            // Reset workspace state when user logs out
             if (!firebaseUser) {
                 setWorkspaceId(null);
                 setWorkspaceLoading(false);
             }
         });
-        return () => unsubscribe();
+
+        return () => {
+            isMountedRef.current = false;
+            unsubscribe();
+        };
     }, []);
 
     // 2. Sync User Document and Bootstrap Workspace
     useEffect(() => {
-        if (!user) return;
+        // Early return if no user - don't do any Firestore operations
+        if (!user) {
+            return;
+        }
+
+        let cancelled = false;
 
         const bootstrapUserAndWorkspace = async () => {
+            // Double-check user still exists before starting
+            if (!user) return;
+
             setWorkspaceLoading(true);
+
             try {
                 const userRef = doc(db, "users", user.uid);
                 const userDoc = await getDoc(userRef);
+
+                // Check if cancelled before proceeding
+                if (cancelled) return;
 
                 let userProfile: Partial<UserProfile> = userDoc.exists()
                     ? userDoc.data() as UserProfile
@@ -66,62 +89,83 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         updatedAt: serverTimestamp() as any,
                     };
                     await setDoc(userRef, userProfile, { merge: true });
+
+                    if (cancelled) return;
                 }
 
                 // Check if user has a defaultWorkspaceId
                 if (userProfile.defaultWorkspaceId) {
-                    // Verify workspace exists and user has membership
+                    // Verify workspace exists
                     const wsRef = doc(db, "workspaces", userProfile.defaultWorkspaceId);
                     const wsDoc = await getDoc(wsRef);
+
+                    if (cancelled) return;
 
                     if (wsDoc.exists()) {
                         setWorkspaceId(userProfile.defaultWorkspaceId);
                     } else {
                         // Workspace was deleted, create a new one
-                        await createWorkspaceForUser(user);
+                        await createWorkspaceForUser(user, cancelled);
                     }
                 } else {
                     // No workspace - create one
-                    await createWorkspaceForUser(user);
+                    await createWorkspaceForUser(user, cancelled);
                 }
             } catch (err) {
-                console.error("Workspace bootstrap error:", err);
+                if (!cancelled) {
+                    console.error("Workspace bootstrap error:", err);
+                }
             } finally {
-                setWorkspaceLoading(false);
+                if (!cancelled) {
+                    setWorkspaceLoading(false);
+                }
             }
         };
 
-        const createWorkspaceForUser = async (user: User) => {
-            const workspaceId = crypto.randomUUID();
-            const workspaceName = user.email
-                ? `${user.email.split('@')[0]}'s Workspace`
+        const createWorkspaceForUser = async (currentUser: User, isCancelled: boolean) => {
+            if (isCancelled) return;
+
+            const newWorkspaceId = crypto.randomUUID();
+            const workspaceName = currentUser.email
+                ? `${currentUser.email.split('@')[0]}'s Workspace`
                 : "My Workspace";
 
             // Create workspace document
-            await setDoc(doc(db, "workspaces", workspaceId), {
-                id: workspaceId,
+            await setDoc(doc(db, "workspaces", newWorkspaceId), {
+                id: newWorkspaceId,
                 name: workspaceName,
-                ownerUid: user.uid,
+                ownerUid: currentUser.uid,
                 createdAt: serverTimestamp(),
             });
 
+            if (isCancelled) return;
+
             // Create member document for owner
-            await setDoc(doc(db, "workspaces", workspaceId, "members", user.uid), {
-                uid: user.uid,
+            await setDoc(doc(db, "workspaces", newWorkspaceId, "members", currentUser.uid), {
+                uid: currentUser.uid,
                 role: "owner",
                 createdAt: serverTimestamp(),
             });
 
+            if (isCancelled) return;
+
             // Update user profile with defaultWorkspaceId
-            await setDoc(doc(db, "users", user.uid), {
-                defaultWorkspaceId: workspaceId,
+            await setDoc(doc(db, "users", currentUser.uid), {
+                defaultWorkspaceId: newWorkspaceId,
                 updatedAt: serverTimestamp(),
             }, { merge: true });
 
-            setWorkspaceId(workspaceId);
+            if (isCancelled) return;
+
+            setWorkspaceId(newWorkspaceId);
         };
 
         bootstrapUserAndWorkspace();
+
+        // Cleanup: mark as cancelled if user changes or component unmounts
+        return () => {
+            cancelled = true;
+        };
     }, [user]);
 
     const signIn = async (email: string, pass: string) => {
@@ -146,9 +190,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const logout = async () => {
+        // Reset workspace state immediately before signing out
+        setWorkspaceId(null);
+        setWorkspaceLoading(false);
+
         try {
             await signOut(auth);
-            setWorkspaceId(null);
         } catch (error) {
             console.error("Error logging out:", error);
         }
