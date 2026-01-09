@@ -11,16 +11,19 @@ import { generateAiStub } from "@/lib/ai-stubs";
 import { sendToBufferStub } from "@/lib/buffer-stubs";
 
 export default function ReviewPage() {
-    const { user } = useAuth();
+    const { user, workspaceId, workspaceLoading } = useAuth();
     const [posts, setPosts] = useState<PostDay[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [toast, setToast] = useState<{ type: 'success' | 'warn', message: string } | null>(null);
 
     useEffect(() => {
-        if (!user) return;
+        if (!user || !workspaceId) return;
 
-        const q = query(collection(db, "users", user.uid, "post_days"), orderBy("date", "asc"));
+        const q = query(
+            collection(db, "workspaces", workspaceId, "post_days"),
+            orderBy("date", "asc")
+        );
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const postsData = snapshot.docs.map((doc) => ({
                 ...doc.data(),
@@ -30,7 +33,7 @@ export default function ReviewPage() {
         });
 
         return () => unsubscribe();
-    }, [user]);
+    }, [user, workspaceId]);
 
     const showToast = useCallback((type: 'success' | 'warn', message: string) => {
         setToast({ type, message });
@@ -52,7 +55,7 @@ export default function ReviewPage() {
     };
 
     const handleGenerateBatch = async () => {
-        if (!user) return;
+        if (!user || !workspaceId) return;
         const targets = selectedIds.size > 0
             ? posts.filter(p => selectedIds.has(p.date))
             : posts;
@@ -62,7 +65,7 @@ export default function ReviewPage() {
         const batch = writeBatch(db);
         for (const post of targets) {
             const updatedData = await generateAiStub(post);
-            const docRef = doc(db, "users", user.uid, "post_days", post.date);
+            const docRef = doc(db, "workspaces", workspaceId, "post_days", post.date);
             batch.update(docRef, {
                 ...updatedData,
                 updatedAt: serverTimestamp()
@@ -79,7 +82,7 @@ export default function ReviewPage() {
     };
 
     const handleSendToBuffer = async (onlySelected: boolean) => {
-        if (!user) return;
+        if (!user || !workspaceId) return;
         const targets = onlySelected
             ? posts.filter(p => selectedIds.has(p.date))
             : posts;
@@ -92,7 +95,7 @@ export default function ReviewPage() {
         for (const post of targets) {
             const result = await sendToBufferStub(post);
             if (result.success) {
-                const docRef = doc(db, "users", user.uid, "post_days", post.date);
+                const docRef = doc(db, "workspaces", workspaceId, "post_days", post.date);
                 await updateDoc(docRef, {
                     status: "sent",
                     buffer: { pushedAt: result.pushedAt },
@@ -110,6 +113,20 @@ export default function ReviewPage() {
             showToast('success', `Successfully sent ${successCount} posts to Buffer.`);
         }
     };
+
+    // Show loading while workspace is being resolved
+    if (workspaceLoading || !workspaceId) {
+        return (
+            <div className="p-4 md:p-8 max-w-7xl mx-auto">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="p-12 text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500 mx-auto mb-4"></div>
+                        <p className="text-gray-500">Setting up your workspace...</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="p-4 md:p-8 max-w-7xl mx-auto">

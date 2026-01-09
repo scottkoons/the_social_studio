@@ -26,6 +26,29 @@ export interface Asset {
     fileName: string;
     contentType: string;
     size: number;
-    userId: string;
+    workspaceId: string;
     createdAt: Timestamp;
+}
+
+export type MemberRole = "owner" | "admin" | "editor" | "viewer";
+
+export interface Workspace {
+    id: string;
+    name: string;
+    ownerUid: string;
+    createdAt: Timestamp;
+}
+
+export interface WorkspaceMember {
+    uid: string;
+    role: MemberRole;
+    createdAt: Timestamp;
+}
+
+export interface UserProfile {
+    email: string;
+    displayName?: string;
+    defaultWorkspaceId?: string;
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
 }

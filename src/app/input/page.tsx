@@ -12,14 +12,17 @@ import { PostDay } from "@/lib/types";
 import { getTodayInDenver } from "@/lib/utils";
 
 export default function InputPage() {
-    const { user } = useAuth();
+    const { user, workspaceId, workspaceLoading } = useAuth();
     const [posts, setPosts] = useState<PostDay[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!user) return;
+        if (!user || !workspaceId) return;
 
-        const q = query(collection(db, "users", user.uid, "post_days"), orderBy("date", "asc"));
+        const q = query(
+            collection(db, "workspaces", workspaceId, "post_days"),
+            orderBy("date", "asc")
+        );
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const postsData = snapshot.docs.map((doc) => ({
                 ...doc.data(),
@@ -29,10 +32,10 @@ export default function InputPage() {
         });
 
         return () => unsubscribe();
-    }, [user]);
+    }, [user, workspaceId]);
 
     const addRow = async () => {
-        if (!user) return;
+        if (!user || !workspaceId) return;
 
         // Find the next available date
         let nextDate = new Date();
@@ -47,7 +50,7 @@ export default function InputPage() {
         }
 
         try {
-            const docRef = doc(db, "users", user.uid, "post_days", dateStr);
+            const docRef = doc(db, "workspaces", workspaceId, "post_days", dateStr);
             await setDoc(docRef, {
                 date: dateStr,
                 starterText: "",
@@ -60,6 +63,20 @@ export default function InputPage() {
             alert("Failed to add row. This date might already be taken.");
         }
     };
+
+    // Show loading while workspace is being resolved
+    if (workspaceLoading || !workspaceId) {
+        return (
+            <div className="p-4 md:p-8 max-w-7xl mx-auto">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="p-12 text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500 mx-auto mb-4"></div>
+                        <p className="text-gray-500">Setting up your workspace...</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="p-4 md:p-8 max-w-7xl mx-auto">

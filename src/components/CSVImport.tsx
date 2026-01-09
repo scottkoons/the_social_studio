@@ -6,13 +6,13 @@ import { Upload, FileDown, AlertCircle, Check } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 export default function CSVImport() {
-    const { user } = useAuth();
+    const { user, workspaceId } = useAuth();
     const [isImporting, setIsImporting] = useState(false);
     const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file || !user) return;
+        if (!file || !user || !workspaceId) return;
 
         setIsImporting(true);
         setStatus(null);
@@ -35,7 +35,7 @@ export default function CSVImport() {
                     }
 
                     try {
-                        const docRef = doc(db, "users", user.uid, "post_days", date);
+                        const docRef = doc(db, "workspaces", workspaceId, "post_days", date);
                         const docSnap = await getDoc(docRef);
 
                         if (!docSnap.exists()) {

@@ -2,22 +2,74 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Top-level users collection
+
+    // Helper function to check if user is a member of a workspace
+    function isMember(workspaceId) {
+      return exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid));
+    }
+
+    // Helper function to get member role
+    function getMemberRole(workspaceId) {
+      return get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data.role;
+    }
+
+    // Helper function to check if user can write (owner, admin, or editor)
+    function canWrite(workspaceId) {
+      let role = getMemberRole(workspaceId);
+      return role == "owner" || role == "admin" || role == "editor";
+    }
+
+    // Helper function to check if user can read (any member)
+    function canRead(workspaceId) {
+      return isMember(workspaceId);
+    }
+
+    // Users collection - users can only read/write their own profile
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
-      
-      // Subcollection for post days
-      match /post_days/{date} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Workspaces collection
+    match /workspaces/{workspaceId} {
+      // Allow read if user is a member
+      allow read: if request.auth != null && canRead(workspaceId);
+
+      // Allow create if authenticated (for bootstrapping new workspaces)
+      allow create: if request.auth != null && request.resource.data.ownerUid == request.auth.uid;
+
+      // Allow update/delete only for owners and admins
+      allow update, delete: if request.auth != null &&
+        (getMemberRole(workspaceId) == "owner" || getMemberRole(workspaceId) == "admin");
+
+      // Members subcollection
+      match /members/{memberId} {
+        // Allow read if user is a member of the workspace
+        allow read: if request.auth != null && canRead(workspaceId);
+
+        // Allow create own membership during bootstrap (when workspace is being created)
+        allow create: if request.auth != null &&
+          memberId == request.auth.uid &&
+          request.resource.data.role == "owner";
+
+        // Allow owners/admins to manage members
+        allow write: if request.auth != null &&
+          (getMemberRole(workspaceId) == "owner" || getMemberRole(workspaceId) == "admin");
       }
-      
-      // Subcollection for assets
+
+      // Post days subcollection
+      match /post_days/{dateId} {
+        allow read: if request.auth != null && canRead(workspaceId);
+        allow write: if request.auth != null && canWrite(workspaceId);
+      }
+
+      // Assets subcollection
       match /assets/{assetId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read: if request.auth != null && canRead(workspaceId);
+        allow write: if request.auth != null && canWrite(workspaceId);
       }
     }
-    
-    // Disallow global access to legacy root-level collections
+
+    // Disallow access to legacy root-level collections
     match /post_days/{any} {
       allow read, write: if false;
     }

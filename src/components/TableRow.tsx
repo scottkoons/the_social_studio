@@ -15,7 +15,7 @@ interface TableRowProps {
 }
 
 export default function TableRow({ post, allPostDates }: TableRowProps) {
-    const { user } = useAuth();
+    const { user, workspaceId } = useAuth();
     const [starterText, setStarterText] = useState(post.starterText || "");
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -30,10 +30,10 @@ export default function TableRow({ post, allPostDates }: TableRowProps) {
         if (debounceTimer.current) clearTimeout(debounceTimer.current);
 
         debounceTimer.current = setTimeout(async () => {
-            if (!user) return;
+            if (!user || !workspaceId) return;
             setIsSaving(true);
             try {
-                const docRef = doc(db, "users", user.uid, "post_days", post.date);
+                const docRef = doc(db, "workspaces", workspaceId, "post_days", post.date);
                 await updateDoc(docRef, {
                     starterText,
                     updatedAt: serverTimestamp(),
@@ -48,10 +48,10 @@ export default function TableRow({ post, allPostDates }: TableRowProps) {
         return () => {
             if (debounceTimer.current) clearTimeout(debounceTimer.current);
         };
-    }, [starterText, post.date, post.starterText, user]);
+    }, [starterText, post.date, post.starterText, user, workspaceId]);
 
     const handleDateChange = async (newDate: string) => {
-        if (newDate === post.date || !user) return;
+        if (newDate === post.date || !user || !workspaceId) return;
 
         if (allPostDates.includes(newDate)) {
             setError(`Date ${newDate} is already taken.`);
@@ -61,8 +61,8 @@ export default function TableRow({ post, allPostDates }: TableRowProps) {
 
         setIsSaving(true);
         try {
-            const oldDocRef = doc(db, "users", user.uid, "post_days", post.date);
-            const newDocRef = doc(db, "users", user.uid, "post_days", newDate);
+            const oldDocRef = doc(db, "workspaces", workspaceId, "post_days", post.date);
+            const newDocRef = doc(db, "workspaces", workspaceId, "post_days", newDate);
 
             const newDocSnap = await getDoc(newDocRef);
             if (newDocSnap.exists()) {
@@ -71,7 +71,7 @@ export default function TableRow({ post, allPostDates }: TableRowProps) {
                 return;
             }
 
-            // Copy data to new doc
+            // Copy data to new doc (preserving imageAssetId)
             await setDoc(newDocRef, {
                 ...post,
                 date: newDate,

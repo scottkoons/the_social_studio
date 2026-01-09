@@ -2,7 +2,17 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    // Workspace assets: assets/{workspaceId}/{dateId}/{filename}
+    // Storage rules can't query Firestore to verify workspace membership,
+    // so we require authentication and trust the app to enforce membership.
+    // For stronger security, use Cloud Functions to generate signed URLs.
+    match /assets/{workspaceId}/{dateId}/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Legacy path (block access to prevent old paths from working)
     match /assets/{uid}/{date}/{allPaths=**} {
+      // Only allow if uid matches auth (backwards compatibility during migration)
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
   }

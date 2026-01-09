@@ -16,7 +16,7 @@ interface ReviewRowProps {
 }
 
 export default function ReviewRow({ post, isSelected, onSelect }: ReviewRowProps) {
-    const { user } = useAuth();
+    const { user, workspaceId } = useAuth();
     const [localAi, setLocalAi] = useState(post.ai || {
         igCaption: "",
         fbCaption: "",
@@ -42,10 +42,10 @@ export default function ReviewRow({ post, isSelected, onSelect }: ReviewRowProps
         if (debounceTimer.current) clearTimeout(debounceTimer.current);
 
         debounceTimer.current = setTimeout(async () => {
-            if (!user) return;
+            if (!user || !workspaceId) return;
             setIsSaving(true);
             try {
-                const docRef = doc(db, "users", user.uid, "post_days", post.date);
+                const docRef = doc(db, "workspaces", workspaceId, "post_days", post.date);
                 const flags = computeFlags({
                     date: post.date,
                     starterText: post.starterText,

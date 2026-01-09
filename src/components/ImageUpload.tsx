@@ -17,14 +17,14 @@ interface ImageUploadProps {
 }
 
 export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageUploadProps) {
-    const { user } = useAuth();
+    const { user, workspaceId } = useAuth();
     const [asset, setAsset] = useState<any>(null);
     const [uploadProgress, setUploadProgress] = useState(0);
 
     useEffect(() => {
         const fetchAsset = async () => {
-            if (post.imageAssetId && user) {
-                const assetRef = doc(db, "users", user.uid, "assets", post.imageAssetId);
+            if (post.imageAssetId && user && workspaceId) {
+                const assetRef = doc(db, "workspaces", workspaceId, "assets", post.imageAssetId);
                 const assetSnap = await getDoc(assetRef);
                 if (assetSnap.exists()) {
                     setAsset(assetSnap.data());
@@ -34,22 +34,22 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
             }
         };
         fetchAsset();
-    }, [post.imageAssetId, user]);
+    }, [post.imageAssetId, user, workspaceId]);
 
     const onDrop = useCallback(async (acceptedFiles: File[]) => {
-        if (!user || acceptedFiles.length === 0) return;
+        if (!user || !workspaceId || acceptedFiles.length === 0) return;
 
         const file = acceptedFiles[0];
         onUploadStart();
 
         try {
-            // Deterministic storage path: assets/{uid}/{YYYY-MM-DD}/{originalFilename}
-            const storagePath = `assets/${user.uid}/${post.date}/${file.name}`;
+            // Storage path: assets/{workspaceId}/{YYYY-MM-DD}/{originalFilename}
+            const storagePath = `assets/${workspaceId}/${post.date}/${file.name}`;
             const storageRef = ref(storage, storagePath);
 
             await uploadBytes(storageRef, file);
 
-            // Create asset doc
+            // Create asset doc under workspace
             const assetId = crypto.randomUUID();
             const assetData = {
                 id: assetId,
@@ -58,13 +58,13 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
                 contentType: file.type,
                 size: file.size,
                 createdAt: serverTimestamp(),
-                userId: user.uid,
+                workspaceId: workspaceId,
             };
 
-            await setDoc(doc(db, "users", user.uid, "assets", assetId), assetData);
+            await setDoc(doc(db, "workspaces", workspaceId, "assets", assetId), assetData);
 
             // Link asset to post_day
-            await updateDoc(doc(db, "users", user.uid, "post_days", post.date), {
+            await updateDoc(doc(db, "workspaces", workspaceId, "post_days", post.date), {
                 imageAssetId: assetId,
                 updatedAt: serverTimestamp(),
             });
@@ -76,7 +76,7 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
         } finally {
             onUploadEnd();
         }
-    }, [user, post.date, onUploadStart, onUploadEnd]);
+    }, [user, workspaceId, post.date, onUploadStart, onUploadEnd]);
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
@@ -85,11 +85,11 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
     });
 
     const removeImage = async (e: React.MouseEvent) => {
-        if (!user) return;
+        if (!user || !workspaceId) return;
         e.stopPropagation();
         onUploadStart();
         try {
-            await updateDoc(doc(db, "users", user.uid, "post_days", post.date), {
+            await updateDoc(doc(db, "workspaces", workspaceId, "post_days", post.date), {
                 imageAssetId: null,
                 updatedAt: serverTimestamp(),
             });
@@ -107,10 +107,6 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
                 <div className="absolute inset-0 flex items-center justify-center">
                     <ImageIcon className="text-gray-200" size={32} />
                 </div>
-                {/* We can't easily show a preview without getting a download URL, 
-            which might be slow to do for every row. 
-            For Phase 1, showing the filename or a simple check is fine. 
-            But let's try to get the URL for a nicer UI. */}
                 <AssetPreview storagePath={asset.storagePath} />
 
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-2">
