@@ -2,14 +2,16 @@
 
 import { useState, useRef } from "react";
 import Papa from "papaparse";
-import { db } from "@/lib/firebase";
+import { db, functions } from "@/lib/firebase";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
-import { FileDown, AlertCircle, Check, X } from "lucide-react";
+import { httpsCallable } from "firebase/functions";
+import { FileDown, AlertCircle, Check, X, Image } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 interface ParsedRow {
     date: string;
     starterText: string;
+    imageUrl?: string;
 }
 
 interface DuplicateInfo {
@@ -19,9 +21,18 @@ interface DuplicateInfo {
 
 type DuplicateAction = "skip" | "overwrite" | "overwrite-empty";
 
+interface ImportImageResponse {
+    success: boolean;
+    assetId?: string;
+    downloadUrl?: string;
+    error?: string;
+}
+
 export default function CSVImport() {
     const { user, workspaceId } = useAuth();
     const [isImporting, setIsImporting] = useState(false);
+    const [importingImages, setImportingImages] = useState(false);
+    const [imageProgress, setImageProgress] = useState({ current: 0, total: 0 });
     const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
     // Modal state
@@ -39,7 +50,16 @@ export default function CSVImport() {
     } | null>(null);
 
     // Import counters
-    const countersRef = useRef({ created: 0, overwritten: 0, skipped: 0 });
+    const countersRef = useRef({
+        created: 0,
+        overwritten: 0,
+        skipped: 0,
+        imagesImported: 0,
+        imagesFailed: 0
+    });
+
+    // Track rows that need image import
+    const rowsWithImagesRef = useRef<ParsedRow[]>([]);
 
     const resetState = () => {
         setShowModal(false);
@@ -47,8 +67,17 @@ export default function CSVImport() {
         setCurrentDuplicateIndex(0);
         setApplyToAll(false);
         setOverwriteEmptyOnly(false);
+        setImportingImages(false);
+        setImageProgress({ current: 0, total: 0 });
         pendingImportRef.current = null;
-        countersRef.current = { created: 0, overwritten: 0, skipped: 0 };
+        countersRef.current = {
+            created: 0,
+            overwritten: 0,
+            skipped: 0,
+            imagesImported: 0,
+            imagesFailed: 0
+        };
+        rowsWithImagesRef.current = [];
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -57,7 +86,14 @@ export default function CSVImport() {
 
         setIsImporting(true);
         setStatus(null);
-        countersRef.current = { created: 0, overwritten: 0, skipped: 0 };
+        countersRef.current = {
+            created: 0,
+            overwritten: 0,
+            skipped: 0,
+            imagesImported: 0,
+            imagesFailed: 0
+        };
+        rowsWithImagesRef.current = [];
 
         Papa.parse(file, {
             header: true,
@@ -71,10 +107,16 @@ export default function CSVImport() {
                 for (const row of data) {
                     const date = row.date || row.Date;
                     const starterText = row.starterText || row.StarterText || "";
+                    const imageUrl = row.imageUrl || row.ImageUrl || row.imageURL || "";
 
                     if (!date) {
                         countersRef.current.skipped++;
                         continue;
+                    }
+
+                    const parsedRow: ParsedRow = { date, starterText };
+                    if (imageUrl && isValidUrl(imageUrl)) {
+                        parsedRow.imageUrl = imageUrl;
                     }
 
                     try {
@@ -83,11 +125,11 @@ export default function CSVImport() {
 
                         if (docSnap.exists()) {
                             duplicateRows.push({
-                                row: { date, starterText },
+                                row: parsedRow,
                                 existingData: docSnap.data()
                             });
                         } else {
-                            newRows.push({ date, starterText });
+                            newRows.push(parsedRow);
                         }
                     } catch (err) {
                         console.error("Error checking row:", row, err);
@@ -111,6 +153,7 @@ export default function CSVImport() {
                 } else {
                     // No duplicates - import all new rows directly
                     await importNewRows(newRows);
+                    await processImageImports();
                     finishImport(e.target);
                 }
             },
@@ -120,6 +163,15 @@ export default function CSVImport() {
                 setIsImporting(false);
             }
         });
+    };
+
+    const isValidUrl = (str: string): boolean => {
+        try {
+            const url = new URL(str);
+            return url.protocol === "http:" || url.protocol === "https:";
+        } catch {
+            return false;
+        }
     };
 
     const importNewRows = async (rows: ParsedRow[]) => {
@@ -136,11 +188,53 @@ export default function CSVImport() {
                     updatedAt: serverTimestamp(),
                 });
                 countersRef.current.created++;
+
+                // Track rows with images for later processing
+                if (row.imageUrl) {
+                    rowsWithImagesRef.current.push(row);
+                }
             } catch (err) {
                 console.error("Error importing row:", row, err);
                 countersRef.current.skipped++;
             }
         }
+    };
+
+    const processImageImports = async () => {
+        if (!workspaceId || rowsWithImagesRef.current.length === 0) return;
+
+        setImportingImages(true);
+        setImageProgress({ current: 0, total: rowsWithImagesRef.current.length });
+
+        const importImageFromUrl = httpsCallable<
+            { workspaceId: string; dateId: string; imageUrl: string },
+            ImportImageResponse
+        >(functions, "importImageFromUrl");
+
+        for (let i = 0; i < rowsWithImagesRef.current.length; i++) {
+            const row = rowsWithImagesRef.current[i];
+            setImageProgress({ current: i + 1, total: rowsWithImagesRef.current.length });
+
+            try {
+                const result = await importImageFromUrl({
+                    workspaceId,
+                    dateId: row.date,
+                    imageUrl: row.imageUrl!
+                });
+
+                if (result.data.success) {
+                    countersRef.current.imagesImported++;
+                } else {
+                    console.error("Image import failed:", row.date, result.data.error);
+                    countersRef.current.imagesFailed++;
+                }
+            } catch (err) {
+                console.error("Image import error:", row.date, err);
+                countersRef.current.imagesFailed++;
+            }
+        }
+
+        setImportingImages(false);
     };
 
     const handleDuplicateAction = async (action: DuplicateAction) => {
@@ -159,6 +253,7 @@ export default function CSVImport() {
 
             // Import new rows
             await importNewRows(pendingImportRef.current.newRows);
+            await processImageImports();
             finishImport(pendingImportRef.current.inputElement);
         } else {
             // Process current duplicate only
@@ -172,6 +267,7 @@ export default function CSVImport() {
                 setIsImporting(true);
                 setShowModal(false);
                 await importNewRows(pendingImportRef.current.newRows);
+                await processImageImports();
                 finishImport(pendingImportRef.current.inputElement);
             }
         }
@@ -185,6 +281,10 @@ export default function CSVImport() {
         try {
             if (action === "skip") {
                 countersRef.current.skipped++;
+                // Still process image if skipping text but row has imageUrl and no existing image
+                if (duplicate.row.imageUrl && !duplicate.existingData.imageAssetId) {
+                    rowsWithImagesRef.current.push(duplicate.row);
+                }
             } else if (action === "overwrite") {
                 // Full overwrite - replace entire document
                 await setDoc(docRef, {
@@ -195,6 +295,11 @@ export default function CSVImport() {
                     updatedAt: serverTimestamp(),
                 }, { merge: false });
                 countersRef.current.overwritten++;
+
+                // Track for image import
+                if (duplicate.row.imageUrl) {
+                    rowsWithImagesRef.current.push(duplicate.row);
+                }
             } else if (action === "overwrite-empty") {
                 // Only overwrite empty fields
                 const updates: any = {
@@ -213,6 +318,11 @@ export default function CSVImport() {
 
                 await setDoc(docRef, updates, { merge: true });
                 countersRef.current.overwritten++;
+
+                // Track for image import if no existing image
+                if (duplicate.row.imageUrl && !duplicate.existingData.imageAssetId) {
+                    rowsWithImagesRef.current.push(duplicate.row);
+                }
             }
         } catch (err) {
             console.error("Error processing duplicate:", duplicate.row, err);
@@ -230,15 +340,17 @@ export default function CSVImport() {
     };
 
     const finishImport = (inputElement: HTMLInputElement | null) => {
-        const { created, overwritten, skipped } = countersRef.current;
+        const { created, overwritten, skipped, imagesImported, imagesFailed } = countersRef.current;
 
         const parts: string[] = [];
         if (created > 0) parts.push(`${created} created`);
         if (overwritten > 0) parts.push(`${overwritten} overwritten`);
         if (skipped > 0) parts.push(`${skipped} skipped`);
+        if (imagesImported > 0) parts.push(`${imagesImported} images imported`);
+        if (imagesFailed > 0) parts.push(`${imagesFailed} images failed`);
 
         setStatus({
-            type: 'success',
+            type: imagesFailed > 0 && imagesImported === 0 ? 'error' : 'success',
             message: parts.length > 0 ? parts.join(", ") + "." : "No rows imported."
         });
 
@@ -254,24 +366,30 @@ export default function CSVImport() {
     return (
         <div className="relative">
             <label className="flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors cursor-pointer shadow-sm">
-                {isImporting ? (
+                {isImporting || importingImages ? (
                     <span className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-teal-500" />
                 ) : (
                     <FileDown size={18} />
                 )}
-                Import CSV
+                {importingImages ? (
+                    <span className="text-sm">
+                        Importing images ({imageProgress.current}/{imageProgress.total})
+                    </span>
+                ) : (
+                    "Import CSV"
+                )}
                 <input
                     type="file"
                     accept=".csv"
                     onChange={handleFileUpload}
-                    disabled={isImporting || showModal}
+                    disabled={isImporting || showModal || importingImages}
                     className="hidden"
                 />
             </label>
 
             {/* Status Toast */}
             {status && (
-                <div className={`absolute top-full mt-2 right-0 w-64 p-3 rounded-lg shadow-lg border z-20 ${status.type === 'success' ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'
+                <div className={`absolute top-full mt-2 right-0 w-72 p-3 rounded-lg shadow-lg border z-20 ${status.type === 'success' ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'
                     }`}>
                     <div className="flex gap-2">
                         {status.type === 'success' ? <Check size={16} className="shrink-0" /> : <AlertCircle size={16} className="shrink-0" />}
@@ -316,12 +434,22 @@ export default function CSVImport() {
                                     <p className="text-gray-700 line-clamp-3">
                                         {currentDuplicate.existingData.starterText || <span className="italic text-gray-400">(empty)</span>}
                                     </p>
+                                    {currentDuplicate.existingData.imageAssetId && (
+                                        <p className="text-teal-600 text-[10px] mt-1 flex items-center gap-1">
+                                            <Image size={10} /> Has image
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="bg-teal-50 rounded-lg p-3">
                                     <p className="font-bold text-teal-600 uppercase tracking-wider mb-1">New (CSV)</p>
                                     <p className="text-gray-700 line-clamp-3">
                                         {currentDuplicate.row.starterText || <span className="italic text-gray-400">(empty)</span>}
                                     </p>
+                                    {currentDuplicate.row.imageUrl && (
+                                        <p className="text-teal-600 text-[10px] mt-1 flex items-center gap-1">
+                                            <Image size={10} /> Has imageUrl
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
