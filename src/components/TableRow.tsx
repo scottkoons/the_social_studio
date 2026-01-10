@@ -12,9 +12,11 @@ import { useAuth } from "@/context/AuthContext";
 interface TableRowProps {
     post: PostDay;
     allPostDates: string[];
+    isSelected: boolean;
+    onSelect: (id: string, selected: boolean) => void;
 }
 
-export default function TableRow({ post, allPostDates }: TableRowProps) {
+export default function TableRow({ post, allPostDates, isSelected, onSelect }: TableRowProps) {
     const { user, workspaceId } = useAuth();
     const [starterText, setStarterText] = useState(post.starterText || "");
     const [isSaving, setIsSaving] = useState(false);
@@ -90,7 +92,16 @@ export default function TableRow({ post, allPostDates }: TableRowProps) {
     };
 
     return (
-        <tr className="hover:bg-gray-50/50 transition-colors group">
+        <tr className={`hover:bg-gray-50/50 transition-colors group ${isSelected ? 'bg-teal-50/30' : ''}`}>
+            <td className="px-4 py-4 align-top w-10">
+                <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={(e) => onSelect(post.date, e.target.checked)}
+                    className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                />
+            </td>
+
             <td className="px-6 py-4 align-top">
                 <div className="flex flex-col gap-1">
                     <input
