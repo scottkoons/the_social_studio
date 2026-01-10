@@ -29,11 +29,14 @@ interface ImportImageResponse {
 }
 
 export default function CSVImport() {
-    const { user, workspaceId } = useAuth();
+    const { user, workspaceId, workspaceLoading } = useAuth();
     const [isImporting, setIsImporting] = useState(false);
     const [importingImages, setImportingImages] = useState(false);
     const [imageProgress, setImageProgress] = useState({ current: 0, total: 0 });
     const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+
+    // Compute if import is allowed
+    const canImport = !workspaceLoading && !!workspaceId && !!user;
 
     // Modal state
     const [showModal, setShowModal] = useState(false);
@@ -82,7 +85,19 @@ export default function CSVImport() {
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file || !user || !workspaceId) return;
+        if (!file) return;
+
+        // Hard guard: ensure workspace is ready before any Firestore operations
+        if (!user || !workspaceId || workspaceLoading) {
+            setStatus({
+                type: 'error',
+                message: workspaceLoading
+                    ? "Please wait for workspace to load."
+                    : "Workspace not available. Please refresh the page."
+            });
+            e.target.value = "";
+            return;
+        }
 
         setIsImporting(true);
         setStatus(null);
@@ -95,10 +110,21 @@ export default function CSVImport() {
         };
         rowsWithImagesRef.current = [];
 
+        // Capture workspaceId at parse time to use in async callback
+        const currentWorkspaceId = workspaceId;
+
         Papa.parse(file, {
             header: true,
             skipEmptyLines: true,
             complete: async (results) => {
+                // Double-check workspaceId is still valid
+                if (!currentWorkspaceId) {
+                    setStatus({ type: 'error', message: "Workspace not available." });
+                    setIsImporting(false);
+                    e.target.value = "";
+                    return;
+                }
+
                 const data = results.data as any[];
                 const newRows: ParsedRow[] = [];
                 const duplicateRows: DuplicateInfo[] = [];
@@ -120,7 +146,8 @@ export default function CSVImport() {
                     }
 
                     try {
-                        const docRef = doc(db, "workspaces", workspaceId, "post_days", date);
+                        // Use workspace path: workspaces/{workspaceId}/post_days/{date}
+                        const docRef = doc(db, "workspaces", currentWorkspaceId, "post_days", date);
                         const docSnap = await getDoc(docRef);
 
                         if (docSnap.exists()) {
@@ -382,7 +409,7 @@ export default function CSVImport() {
                     type="file"
                     accept=".csv"
                     onChange={handleFileUpload}
-                    disabled={isImporting || showModal || importingImages}
+                    disabled={!canImport || isImporting || showModal || importingImages}
                     className="hidden"
                 />
             </label>
