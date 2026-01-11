@@ -1,5 +1,7 @@
 {
-  "projects": {},
+  "projects": {
+    "prod-social-studio": "the-social-studio-c3dc1"
+  },
   "targets": {},
   "etags": {}
 }

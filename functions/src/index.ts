@@ -2,7 +2,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 
 initializeApp();
 
@@ -35,6 +35,19 @@ interface ImportImageResponse {
   assetId?: string;
   downloadUrl?: string;
   error?: string;
+}
+
+/**
+ * Generate a Firebase Storage download URL using a download token.
+ * This avoids using signBlob/getSignedUrl which requires service account permissions.
+ */
+function getFirebaseDownloadUrl(
+  bucketName: string,
+  storagePath: string,
+  downloadToken: string
+): string {
+  const encodedPath = encodeURIComponent(storagePath);
+  return `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodedPath}?alt=media&token=${downloadToken}`;
 }
 
 export const importImageFromUrl = onCall<ImportImageRequest>(
@@ -71,7 +84,10 @@ export const importImageFromUrl = onCall<ImportImageRequest>(
         throw new Error("Invalid protocol");
       }
     } catch {
-      throw new HttpsError("invalid-argument", "Invalid imageUrl format");
+      throw new HttpsError(
+        "invalid-argument",
+        `Invalid imageUrl format: "${imageUrl}". Must be a valid http/https URL.`
+      );
     }
 
     // 3. Check workspace membership
@@ -90,7 +106,7 @@ export const importImageFromUrl = onCall<ImportImageRequest>(
     const role = memberData?.role;
 
     if (!role || !["owner", "admin", "editor"].includes(role)) {
-      throw new HttpsError("permission-denied", "Insufficient permissions");
+      throw new HttpsError("permission-denied", "Insufficient permissions to import images");
     }
 
     // 4. Fetch the remote image
@@ -102,80 +118,110 @@ export const importImageFromUrl = onCall<ImportImageRequest>(
           "User-Agent": "TheSocialStudio/1.0",
         },
       });
-
-      if (!response.ok) {
-        throw new HttpsError(
-          "failed-precondition",
-          `Failed to fetch image: HTTP ${response.status}`
-        );
-      }
     } catch (error) {
-      if (error instanceof HttpsError) throw error;
       throw new HttpsError(
         "failed-precondition",
-        `Failed to fetch image: ${error instanceof Error ? error.message : "Unknown error"}`
+        `Failed to fetch image from "${imageUrl}": ${error instanceof Error ? error.message : "Network error"}`
+      );
+    }
+
+    // Check for non-200 response
+    if (!response.ok) {
+      throw new HttpsError(
+        "failed-precondition",
+        `Failed to fetch image: Server returned HTTP ${response.status} ${response.statusText}`
       );
     }
 
     // 5. Check content-type
     const contentType = response.headers.get("content-type")?.split(";")[0].trim();
-    if (!contentType || !ALLOWED_CONTENT_TYPES.includes(contentType)) {
+    if (!contentType) {
       throw new HttpsError(
         "invalid-argument",
-        `Invalid content type: ${contentType}. Allowed: ${ALLOWED_CONTENT_TYPES.join(", ")}`
+        "Remote server did not return a content-type header. Cannot verify this is an image."
+      );
+    }
+    if (!ALLOWED_CONTENT_TYPES.includes(contentType)) {
+      throw new HttpsError(
+        "invalid-argument",
+        `Invalid content type "${contentType}". Allowed types: ${ALLOWED_CONTENT_TYPES.join(", ")}`
       );
     }
 
     // 6. Check content-length if available
     const contentLength = response.headers.get("content-length");
     if (contentLength && parseInt(contentLength, 10) > MAX_SIZE_BYTES) {
+      const sizeMB = (parseInt(contentLength, 10) / (1024 * 1024)).toFixed(2);
       throw new HttpsError(
         "invalid-argument",
-        `Image too large: ${contentLength} bytes. Max: ${MAX_SIZE_BYTES} bytes`
+        `Image too large: ${sizeMB}MB. Maximum allowed: 10MB`
       );
     }
 
     // 7. Download image bytes
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    if (buffer.length > MAX_SIZE_BYTES) {
+    let buffer: Buffer;
+    try {
+      const arrayBuffer = await response.arrayBuffer();
+      buffer = Buffer.from(arrayBuffer);
+    } catch (error) {
       throw new HttpsError(
-        "invalid-argument",
-        `Image too large: ${buffer.length} bytes. Max: ${MAX_SIZE_BYTES} bytes`
+        "failed-precondition",
+        `Failed to download image data: ${error instanceof Error ? error.message : "Unknown error"}`
       );
     }
 
-    // 8. Generate hash and path
+    if (buffer.length === 0) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Downloaded image is empty (0 bytes)"
+      );
+    }
+
+    if (buffer.length > MAX_SIZE_BYTES) {
+      const sizeMB = (buffer.length / (1024 * 1024)).toFixed(2);
+      throw new HttpsError(
+        "invalid-argument",
+        `Image too large: ${sizeMB}MB. Maximum allowed: 10MB`
+      );
+    }
+
+    // 8. Generate hash, token, and path
     const hash = createHash("sha256")
       .update(imageUrl + Date.now().toString())
       .digest("hex")
       .substring(0, 16);
 
+    const downloadToken = randomUUID();
     const ext = CONTENT_TYPE_TO_EXT[contentType] || "jpg";
     const fileName = `${hash}.${ext}`;
     const storagePath = `assets/${workspaceId}/${dateId}/${fileName}`;
 
-    // 9. Upload to Firebase Storage
+    // 9. Upload to Firebase Storage with download token in metadata
     const bucket = storage.bucket();
     const file = bucket.file(storagePath);
 
-    await file.save(buffer, {
-      metadata: {
-        contentType: contentType,
-        cacheControl: "public, max-age=31536000",
+    try {
+      await file.save(buffer, {
         metadata: {
-          originalUrl: imageUrl,
-          uploadedBy: uid,
+          contentType: contentType,
+          cacheControl: "public, max-age=31536000",
+          metadata: {
+            firebaseStorageDownloadTokens: downloadToken,
+            originalUrl: imageUrl,
+            uploadedBy: uid,
+          },
         },
-      },
-    });
+      });
+    } catch (error) {
+      throw new HttpsError(
+        "internal",
+        `Failed to upload image to storage: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    }
 
-    // 10. Generate download URL
-    const [downloadUrl] = await file.getSignedUrl({
-      action: "read",
-      expires: "03-01-2500", // Far future expiry
-    });
+    // 10. Generate download URL using the token (no signed URL)
+    const bucketName = bucket.name;
+    const downloadUrl = getFirebaseDownloadUrl(bucketName, storagePath, downloadToken);
 
     // 11. Create asset document
     const assetId = hash;
@@ -185,19 +231,27 @@ export const importImageFromUrl = onCall<ImportImageRequest>(
       .collection("assets")
       .doc(assetId);
 
-    await assetRef.set({
-      id: assetId,
-      workspaceId: workspaceId,
-      dateId: dateId,
-      storagePath: storagePath,
-      downloadUrl: downloadUrl,
-      originalUrl: imageUrl,
-      contentType: contentType,
-      size: buffer.length,
-      fileName: fileName,
-      createdAt: FieldValue.serverTimestamp(),
-      createdBy: uid,
-    });
+    try {
+      await assetRef.set({
+        id: assetId,
+        workspaceId: workspaceId,
+        dateId: dateId,
+        storagePath: storagePath,
+        downloadUrl: downloadUrl,
+        downloadToken: downloadToken,
+        originalUrl: imageUrl,
+        contentType: contentType,
+        size: buffer.length,
+        fileName: fileName,
+        createdAt: FieldValue.serverTimestamp(),
+        createdBy: uid,
+      });
+    } catch (error) {
+      throw new HttpsError(
+        "internal",
+        `Failed to create asset document: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    }
 
     // 12. Update post_day document
     const postDayRef = db
@@ -206,12 +260,19 @@ export const importImageFromUrl = onCall<ImportImageRequest>(
       .collection("post_days")
       .doc(dateId);
 
-    await postDayRef.update({
-      imageAssetId: assetId,
-      imageUrl: downloadUrl,
-      originalImageUrl: imageUrl,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    try {
+      await postDayRef.update({
+        imageAssetId: assetId,
+        imageUrl: downloadUrl,
+        originalImageUrl: imageUrl,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    } catch (error) {
+      throw new HttpsError(
+        "internal",
+        `Failed to update post_day document: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    }
 
     return {
       success: true,
