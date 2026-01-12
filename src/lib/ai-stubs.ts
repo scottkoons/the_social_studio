@@ -1,8 +1,9 @@
-import { PostDay } from "./types";
-import { computeFlags, computeConfidence } from "./utils";
+import { PostDay, PostDayAI } from "./types";
+import { Timestamp } from "firebase/firestore";
 
 /**
- * Stubs AI generation for a post.
+ * Stubs AI generation for a post (for local testing only).
+ * Production uses the generatePostCopy Cloud Function.
  */
 export async function generateAiStub(post: Partial<PostDay>): Promise<Partial<PostDay>> {
     const starterText = post.starterText || "";
@@ -32,13 +33,22 @@ export async function generateAiStub(post: Partial<PostDay>): Promise<Partial<Po
         "TheSocialStudio", "PlanningTools", "SocialMediaManagement"
     ].slice(0, Math.floor(Math.random() * 4) + 3);
 
-    const aiData = {
-        igCaption,
-        fbCaption,
-        igHashtags,
-        fbHashtags,
-        flags: [], // Will be recomputed
-        confidence: computeConfidence({ starterText: post.starterText }),
+    const aiData: PostDayAI = {
+        ig: {
+            caption: igCaption,
+            hashtags: igHashtags,
+        },
+        fb: {
+            caption: fbCaption,
+            hashtags: fbHashtags,
+        },
+        meta: {
+            model: "stub",
+            generatedAt: Timestamp.now(),
+            promptVersion: "stub-1.0",
+            confidence: starterText ? 0.7 : 0.5,
+            needsInfo: !starterText && !hasImage,
+        },
     };
 
     const updatedPost: Partial<PostDay> = {
@@ -46,13 +56,6 @@ export async function generateAiStub(post: Partial<PostDay>): Promise<Partial<Po
         ai: aiData,
         status: post.status === "edited" ? "edited" : "generated",
     };
-
-    // Recompute flags
-    updatedPost.ai!.flags = computeFlags({
-        date: post.date!,
-        starterText: post.starterText,
-        imageAssetId: post.imageAssetId
-    });
 
     return updatedPost;
 }

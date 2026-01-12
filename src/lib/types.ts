@@ -1,23 +1,42 @@
 import { Timestamp } from "firebase/firestore";
 
+export interface PostDayAI {
+    ig: {
+        caption: string;
+        hashtags: string[];
+    };
+    fb: {
+        caption: string;
+        hashtags: string[];
+    };
+    meta: {
+        model: string;
+        generatedAt: Timestamp;
+        promptVersion: string;
+        confidence: number;
+        needsInfo?: boolean;
+        errorMessage?: string;
+    };
+}
+
 export interface PostDay {
     date: string; // YYYY-MM-DD, also used as Firestore doc ID
     starterText?: string;
     imageAssetId?: string;
     status: "input" | "generated" | "edited" | "sent" | "error";
-    ai?: {
-        igCaption: string;
-        fbCaption: string;
-        igHashtags: string[];
-        fbHashtags: string[];
-        flags: string[];
-        confidence: number;
-    };
+    ai?: PostDayAI;
     buffer?: {
         pushedAt?: Timestamp;
     };
     createdAt: Timestamp;
     updatedAt: Timestamp;
+}
+
+export type HashtagStyle = "light" | "medium" | "heavy";
+
+export interface WorkspaceAISettings {
+    brandVoice: string;
+    hashtagStyle: HashtagStyle;
 }
 
 export interface Asset {

@@ -2,17 +2,25 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { db } from "@/lib/firebase";
-import { collection, query, onSnapshot, orderBy, doc, updateDoc, writeBatch, serverTimestamp } from "firebase/firestore";
+import { db, functions } from "@/lib/firebase";
+import { collection, query, onSnapshot, orderBy, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import ReviewTable from "@/components/ReviewTable";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCard from "@/components/ui/DashboardCard";
 import Toast from "@/components/ui/Toast";
 import { PostDay } from "@/lib/types";
 import { Play, Send, CheckCircle2 } from "lucide-react";
-import { generateAiStub } from "@/lib/ai-stubs";
 import { sendToBufferStub } from "@/lib/buffer-stubs";
 import { useHidePastUnsent } from "@/hooks/useHidePastUnsent";
+
+const CONCURRENCY_LIMIT = 3;
+
+interface GeneratePostCopyResponse {
+    success: boolean;
+    status: "generated" | "already_generated" | "error";
+    message?: string;
+}
 
 export default function ReviewPage() {
     const { user, workspaceId, workspaceLoading } = useAuth();
@@ -21,6 +29,7 @@ export default function ReviewPage() {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [toast, setToast] = useState<{ type: 'success' | 'warn' | 'error', message: string } | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
     const [isSending, setIsSending] = useState(false);
 
     // Use shared hook for filtering past unsent posts (controlled from Settings)
@@ -75,31 +84,81 @@ export default function ReviewPage() {
 
     const handleGenerateBatch = async () => {
         if (!user || !workspaceId) return;
+
         const targets = selectedIds.size > 0
-            ? posts.filter(p => selectedIds.has(p.date))
-            : posts;
+            ? filteredPosts.filter(p => selectedIds.has(p.date))
+            : filteredPosts;
 
         if (targets.length === 0) return;
 
         setIsGenerating(true);
-        const batch = writeBatch(db);
-        for (const post of targets) {
-            const updatedData = await generateAiStub(post);
-            const docRef = doc(db, "workspaces", workspaceId, "post_days", post.date);
-            batch.update(docRef, {
-                ...updatedData,
-                updatedAt: serverTimestamp()
-            });
+
+        const generatePostCopy = httpsCallable<
+            { workspaceId: string; dateId: string; regenerate: boolean },
+            GeneratePostCopyResponse
+        >(functions, "generatePostCopy");
+
+        let generated = 0;
+        let skipped = 0;
+        let failed = 0;
+
+        // Process in batches with concurrency limit
+        const queue = [...targets];
+        const inFlight: Promise<void>[] = [];
+
+        const processOne = async (post: PostDay) => {
+            setGeneratingIds(prev => new Set(prev).add(post.date));
+
+            try {
+                const result = await generatePostCopy({
+                    workspaceId,
+                    dateId: post.date,
+                    regenerate: false,
+                });
+
+                if (result.data.status === "generated") {
+                    generated++;
+                } else if (result.data.status === "already_generated") {
+                    skipped++;
+                }
+            } catch (err) {
+                console.error(`Generate error for ${post.date}:`, err);
+                failed++;
+            } finally {
+                setGeneratingIds(prev => {
+                    const next = new Set(prev);
+                    next.delete(post.date);
+                    return next;
+                });
+            }
+        };
+
+        while (queue.length > 0 || inFlight.length > 0) {
+            // Fill up to concurrency limit
+            while (queue.length > 0 && inFlight.length < CONCURRENCY_LIMIT) {
+                const post = queue.shift()!;
+                const promise = processOne(post).then(() => {
+                    const idx = inFlight.indexOf(promise);
+                    if (idx > -1) inFlight.splice(idx, 1);
+                });
+                inFlight.push(promise);
+            }
+
+            // Wait for at least one to complete
+            if (inFlight.length > 0) {
+                await Promise.race(inFlight);
+            }
         }
 
-        try {
-            await batch.commit();
-            showToast('success', `Generated content for ${targets.length} post${targets.length !== 1 ? 's' : ''}.`);
-        } catch (err) {
-            console.error("Batch generate error:", err);
-            showToast('error', "Failed to generate some posts.");
-        } finally {
-            setIsGenerating(false);
+        setIsGenerating(false);
+
+        // Show summary toast
+        if (failed > 0) {
+            showToast('warn', `${generated} generated, ${skipped} skipped, ${failed} failed.`);
+        } else if (skipped > 0) {
+            showToast('success', `${generated} generated, ${skipped} already had content.`);
+        } else {
+            showToast('success', `Generated content for ${generated} post${generated !== 1 ? 's' : ''}.`);
         }
     };
 
@@ -218,6 +277,7 @@ export default function ReviewPage() {
                     <ReviewTable
                         posts={filteredPosts}
                         selectedIds={selectedIds}
+                        generatingIds={generatingIds}
                         onSelectRow={onSelectRow}
                         onSelectAll={onSelectAll}
                     />

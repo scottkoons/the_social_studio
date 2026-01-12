@@ -9,6 +9,7 @@ import { ChevronDown, ChevronUp, FileText } from "lucide-react";
 interface ReviewTableProps {
     posts: PostDay[];
     selectedIds: Set<string>;
+    generatingIds?: Set<string>;
     onSelectRow: (id: string, selected: boolean) => void;
     onSelectAll: (selected: boolean) => void;
 }
@@ -16,6 +17,7 @@ interface ReviewTableProps {
 export default function ReviewTable({
     posts,
     selectedIds,
+    generatingIds = new Set(),
     onSelectRow,
     onSelectAll
 }: ReviewTableProps) {
@@ -87,6 +89,7 @@ export default function ReviewTable({
                             key={post.date}
                             post={post}
                             isSelected={selectedIds.has(post.date)}
+                            isGenerating={generatingIds.has(post.date)}
                             onSelect={onSelectRow}
                         />
                     ))}

@@ -1,31 +1,39 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { PostDay } from "@/lib/types";
+import { PostDay, PostDayAI } from "@/lib/types";
 import { db } from "@/lib/firebase";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import ImageUpload from "./ImageUpload";
 import StatusPill from "./ui/StatusPill";
 import { Loader2, Pencil } from "lucide-react";
 import Link from "next/link";
-import { computeFlags, isPastOrTodayInDenver } from "@/lib/utils";
+import { isPastOrTodayInDenver } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 
 interface ReviewRowProps {
     post: PostDay;
     isSelected: boolean;
+    isGenerating?: boolean;
     onSelect: (id: string, selected: boolean) => void;
 }
 
-export default function ReviewRow({ post, isSelected, onSelect }: ReviewRowProps) {
+const DEFAULT_AI: Omit<PostDayAI, 'meta'> & { meta?: PostDayAI['meta'] } = {
+    ig: { caption: "", hashtags: [] },
+    fb: { caption: "", hashtags: [] },
+};
+
+export default function ReviewRow({ post, isSelected, isGenerating, onSelect }: ReviewRowProps) {
     const { user, workspaceId } = useAuth();
-    const [localAi, setLocalAi] = useState(post.ai || {
-        igCaption: "",
-        fbCaption: "",
-        igHashtags: [],
-        fbHashtags: [],
-        flags: [],
-        confidence: 0
+    const [localAi, setLocalAi] = useState<typeof DEFAULT_AI>(() => {
+        if (post.ai) {
+            return {
+                ig: post.ai.ig || DEFAULT_AI.ig,
+                fb: post.ai.fb || DEFAULT_AI.fb,
+                meta: post.ai.meta,
+            };
+        }
+        return DEFAULT_AI;
     });
     const [isSaving, setIsSaving] = useState(false);
     const debounceTimer = useRef<NodeJS.Timeout | null>(null);
@@ -36,12 +44,22 @@ export default function ReviewRow({ post, isSelected, onSelect }: ReviewRowProps
     // Re-sync local state if post updates (e.g. from batch generation)
     useEffect(() => {
         if (post.ai) {
-            setLocalAi(post.ai);
+            setLocalAi({
+                ig: post.ai.ig || DEFAULT_AI.ig,
+                fb: post.ai.fb || DEFAULT_AI.fb,
+                meta: post.ai.meta,
+            });
         }
     }, [post.ai]);
 
-    const updateField = (field: string, value: any) => {
-        const newAi = { ...localAi, [field]: value };
+    const updatePlatformField = (platform: 'ig' | 'fb', field: 'caption' | 'hashtags', value: string | string[]) => {
+        const newAi = {
+            ...localAi,
+            [platform]: {
+                ...localAi[platform],
+                [field]: value,
+            },
+        };
         setLocalAi(newAi);
 
         if (debounceTimer.current) clearTimeout(debounceTimer.current);
@@ -51,14 +69,9 @@ export default function ReviewRow({ post, isSelected, onSelect }: ReviewRowProps
             setIsSaving(true);
             try {
                 const docRef = doc(db, "workspaces", workspaceId, "post_days", post.date);
-                const flags = computeFlags({
-                    date: post.date,
-                    starterText: post.starterText,
-                    imageAssetId: post.imageAssetId
-                });
 
                 await updateDoc(docRef, {
-                    ai: { ...newAi, flags },
+                    [`ai.${platform}.${field}`]: value,
                     status: post.status === "sent" ? post.status : "edited",
                     updatedAt: serverTimestamp(),
                 });
@@ -70,9 +83,9 @@ export default function ReviewRow({ post, isSelected, onSelect }: ReviewRowProps
         }, 1000);
     };
 
-    const handleHashtagChange = (field: 'igHashtags' | 'fbHashtags', value: string) => {
+    const handleHashtagChange = (platform: 'ig' | 'fb', value: string) => {
         const tags = value.split(',').map(t => t.trim()).filter(t => t !== "");
-        updateField(field, tags);
+        updatePlatformField(platform, 'hashtags', tags);
     };
 
     return (
@@ -106,14 +119,16 @@ export default function ReviewRow({ post, isSelected, onSelect }: ReviewRowProps
                                 Past date
                             </span>
                         )}
-                        {localAi.flags.filter(flag => flag !== "Past date").map(flag => (
-                            <span key={flag} className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
-                                flag === "Missing image" ? "bg-orange-100 text-orange-700" :
-                                    "bg-blue-100 text-blue-700"
-                                }`}>
-                                {flag}
+                        {!post.imageAssetId && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-orange-100 text-orange-700">
+                                Missing image
                             </span>
-                        ))}
+                        )}
+                        {localAi.meta?.needsInfo && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-blue-100 text-blue-700">
+                                Needs info
+                            </span>
+                        )}
                     </div>
                 </div>
             </td>
@@ -129,52 +144,70 @@ export default function ReviewRow({ post, isSelected, onSelect }: ReviewRowProps
 
             {/* Instagram Content */}
             <td className="px-4 py-4 align-top min-w-[280px]">
-                <div className="space-y-3">
-                    <div>
-                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Caption</label>
-                        <textarea
-                            value={localAi.igCaption}
-                            onChange={(e) => updateField('igCaption', e.target.value)}
-                            className="w-full text-sm border border-gray-200 bg-white rounded-lg p-2.5 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 min-h-[72px] resize-none leading-relaxed"
-                            placeholder="AI generating..."
-                        />
+                {isGenerating ? (
+                    <div className="flex items-center justify-center h-[140px] text-gray-400">
+                        <div className="flex flex-col items-center gap-2">
+                            <Loader2 className="animate-spin text-teal-500" size={24} />
+                            <span className="text-xs">Generating...</span>
+                        </div>
                     </div>
-                    <div>
-                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Hashtags</label>
-                        <input
-                            type="text"
-                            value={localAi.igHashtags.join(', ')}
-                            onChange={(e) => handleHashtagChange('igHashtags', e.target.value)}
-                            className="w-full text-sm border border-gray-200 bg-white rounded-lg p-2.5 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
-                            placeholder="#example, #tags"
-                        />
+                ) : (
+                    <div className="space-y-3">
+                        <div>
+                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Caption</label>
+                            <textarea
+                                value={localAi.ig.caption}
+                                onChange={(e) => updatePlatformField('ig', 'caption', e.target.value)}
+                                className="w-full text-sm border border-gray-200 bg-white rounded-lg p-2.5 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 min-h-[72px] resize-none leading-relaxed"
+                                placeholder="AI will generate caption..."
+                            />
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Hashtags</label>
+                            <input
+                                type="text"
+                                value={localAi.ig.hashtags.join(', ')}
+                                onChange={(e) => handleHashtagChange('ig', e.target.value)}
+                                className="w-full text-sm border border-gray-200 bg-white rounded-lg p-2.5 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                                placeholder="#example, #tags"
+                            />
+                        </div>
                     </div>
-                </div>
+                )}
             </td>
 
             {/* Facebook Content */}
             <td className="px-4 py-4 align-top min-w-[280px]">
-                <div className="space-y-3">
-                    <div>
-                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Caption</label>
-                        <textarea
-                            value={localAi.fbCaption}
-                            onChange={(e) => updateField('fbCaption', e.target.value)}
-                            className="w-full text-sm border border-gray-200 bg-white rounded-lg p-2.5 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 min-h-[72px] resize-none leading-relaxed"
-                            placeholder="AI generating..."
-                        />
+                {isGenerating ? (
+                    <div className="flex items-center justify-center h-[140px] text-gray-400">
+                        <div className="flex flex-col items-center gap-2">
+                            <Loader2 className="animate-spin text-teal-500" size={24} />
+                            <span className="text-xs">Generating...</span>
+                        </div>
                     </div>
-                    <div>
-                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Hashtags</label>
-                        <input
-                            type="text"
-                            value={localAi.fbHashtags.join(', ')}
-                            onChange={(e) => handleHashtagChange('fbHashtags', e.target.value)}
-                            className="w-full text-sm border border-gray-200 bg-white rounded-lg p-2.5 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
-                            placeholder="#example, #tags"
-                        />
+                ) : (
+                    <div className="space-y-3">
+                        <div>
+                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Caption</label>
+                            <textarea
+                                value={localAi.fb.caption}
+                                onChange={(e) => updatePlatformField('fb', 'caption', e.target.value)}
+                                className="w-full text-sm border border-gray-200 bg-white rounded-lg p-2.5 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 min-h-[72px] resize-none leading-relaxed"
+                                placeholder="AI will generate caption..."
+                            />
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Hashtags</label>
+                            <input
+                                type="text"
+                                value={localAi.fb.hashtags.join(', ')}
+                                onChange={(e) => handleHashtagChange('fb', e.target.value)}
+                                className="w-full text-sm border border-gray-200 bg-white rounded-lg p-2.5 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                                placeholder="#example, #tags"
+                            />
+                        </div>
                     </div>
-                </div>
+                )}
             </td>
 
             {/* Status */}
@@ -185,13 +218,13 @@ export default function ReviewRow({ post, isSelected, onSelect }: ReviewRowProps
                     ) : (
                         <StatusPill status={post.status} isPastDue={isPast && post.status !== 'sent'} />
                     )}
-                    {localAi.confidence > 0 && (
+                    {localAi.meta?.confidence != null && localAi.meta.confidence > 0 && (
                         <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                            localAi.confidence >= 0.7
+                            localAi.meta.confidence >= 0.7
                                 ? "bg-green-50 text-green-600"
                                 : "bg-amber-50 text-amber-600"
                             }`}>
-                            {Math.round(localAi.confidence * 100)}%
+                            {Math.round(localAi.meta.confidence * 100)}%
                         </span>
                     )}
                 </div>

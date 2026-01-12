@@ -4,43 +4,66 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { HashtagStyle } from "@/lib/types";
 
 interface WorkspaceUiSettings {
     hidePastUnsent: boolean;
 }
 
-interface UseWorkspaceUiSettingsResult {
-    settings: WorkspaceUiSettings;
-    loading: boolean;
-    setHidePastUnsent: (value: boolean) => Promise<void>;
+interface WorkspaceAiSettings {
+    brandVoice: string;
+    hashtagStyle: HashtagStyle;
 }
 
-const DEFAULT_SETTINGS: WorkspaceUiSettings = {
+interface WorkspaceSettings {
+    ui: WorkspaceUiSettings;
+    ai: WorkspaceAiSettings;
+}
+
+interface UseWorkspaceUiSettingsResult {
+    settings: WorkspaceUiSettings;
+    aiSettings: WorkspaceAiSettings;
+    loading: boolean;
+    setHidePastUnsent: (value: boolean) => Promise<void>;
+    setBrandVoice: (value: string) => Promise<void>;
+    setHashtagStyle: (value: HashtagStyle) => Promise<void>;
+}
+
+const DEFAULT_UI_SETTINGS: WorkspaceUiSettings = {
     hidePastUnsent: false,
 };
 
-const LOCAL_STORAGE_KEY = "workspaceUiSettings";
+const DEFAULT_AI_SETTINGS: WorkspaceAiSettings = {
+    brandVoice: "",
+    hashtagStyle: "medium",
+};
+
+const LOCAL_STORAGE_KEY = "workspaceSettings";
 
 /**
- * Hook to manage workspace-level UI settings stored in Firestore.
- * Settings are stored at workspaces/{workspaceId} in the settings.ui field.
+ * Hook to manage workspace-level settings stored in Firestore.
+ * Settings are stored at workspaces/{workspaceId} in the settings field.
  * Uses localStorage as a temporary fallback while Firestore loads.
  */
 export function useWorkspaceUiSettings(): UseWorkspaceUiSettingsResult {
     const { workspaceId } = useAuth();
-    const [settings, setSettings] = useState<WorkspaceUiSettings>(() => {
+    const [settings, setSettings] = useState<WorkspaceSettings>(() => {
         // Try to load from localStorage as initial value for faster UX
         if (typeof window !== "undefined") {
             const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
             if (stored) {
                 try {
-                    return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
+                    const parsed = JSON.parse(stored);
+                    return {
+                        ui: { ...DEFAULT_UI_SETTINGS, ...parsed.ui },
+                        ai: { ...DEFAULT_AI_SETTINGS, ...parsed.ai },
+                    };
                 } catch {
                     // Ignore parse errors
                 }
             }
         }
-        return DEFAULT_SETTINGS;
+        return { ui: DEFAULT_UI_SETTINGS, ai: DEFAULT_AI_SETTINGS };
     });
     const [loading, setLoading] = useState(true);
 
@@ -58,16 +81,23 @@ export function useWorkspaceUiSettings(): UseWorkspaceUiSettingsResult {
             (snapshot) => {
                 if (snapshot.exists()) {
                     const data = snapshot.data();
-                    const uiSettings = data?.settings?.ui || {};
-                    const newSettings: WorkspaceUiSettings = {
-                        hidePastUnsent: uiSettings.hidePastUnsent ?? DEFAULT_SETTINGS.hidePastUnsent,
+                    const uiData = data?.settings?.ui || {};
+                    const aiData = data?.settings?.ai || {};
+                    const newSettings: WorkspaceSettings = {
+                        ui: {
+                            hidePastUnsent: uiData.hidePastUnsent ?? DEFAULT_UI_SETTINGS.hidePastUnsent,
+                        },
+                        ai: {
+                            brandVoice: aiData.brandVoice ?? DEFAULT_AI_SETTINGS.brandVoice,
+                            hashtagStyle: aiData.hashtagStyle ?? DEFAULT_AI_SETTINGS.hashtagStyle,
+                        },
                     };
                     setSettings(newSettings);
                     // Update localStorage cache
                     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newSettings));
                 } else {
                     // Workspace doc doesn't exist yet, use defaults
-                    setSettings(DEFAULT_SETTINGS);
+                    setSettings({ ui: DEFAULT_UI_SETTINGS, ai: DEFAULT_AI_SETTINGS });
                 }
                 setLoading(false);
             },
@@ -86,11 +116,10 @@ export function useWorkspaceUiSettings(): UseWorkspaceUiSettingsResult {
             if (!workspaceId) return;
 
             // Optimistic update
-            setSettings((prev) => ({ ...prev, hidePastUnsent: value }));
-            localStorage.setItem(
-                LOCAL_STORAGE_KEY,
-                JSON.stringify({ ...settings, hidePastUnsent: value })
-            );
+            setSettings((prev) => ({
+                ...prev,
+                ui: { ...prev.ui, hidePastUnsent: value },
+            }));
 
             try {
                 const workspaceRef = doc(db, "workspaces", workspaceId);
@@ -107,15 +136,79 @@ export function useWorkspaceUiSettings(): UseWorkspaceUiSettingsResult {
                 );
             } catch (error) {
                 console.error("Error saving workspace settings:", error);
-                // Revert on error - the onSnapshot will sync the correct value
             }
         },
-        [workspaceId, settings]
+        [workspaceId]
+    );
+
+    // Update brandVoice in Firestore
+    const setBrandVoice = useCallback(
+        async (value: string) => {
+            if (!workspaceId) return;
+
+            // Optimistic update
+            setSettings((prev) => ({
+                ...prev,
+                ai: { ...prev.ai, brandVoice: value },
+            }));
+
+            try {
+                const workspaceRef = doc(db, "workspaces", workspaceId);
+                await setDoc(
+                    workspaceRef,
+                    {
+                        settings: {
+                            ai: {
+                                brandVoice: value,
+                            },
+                        },
+                    },
+                    { merge: true }
+                );
+            } catch (error) {
+                console.error("Error saving brand voice:", error);
+            }
+        },
+        [workspaceId]
+    );
+
+    // Update hashtagStyle in Firestore
+    const setHashtagStyle = useCallback(
+        async (value: HashtagStyle) => {
+            if (!workspaceId) return;
+
+            // Optimistic update
+            setSettings((prev) => ({
+                ...prev,
+                ai: { ...prev.ai, hashtagStyle: value },
+            }));
+
+            try {
+                const workspaceRef = doc(db, "workspaces", workspaceId);
+                await setDoc(
+                    workspaceRef,
+                    {
+                        settings: {
+                            ai: {
+                                hashtagStyle: value,
+                            },
+                        },
+                    },
+                    { merge: true }
+                );
+            } catch (error) {
+                console.error("Error saving hashtag style:", error);
+            }
+        },
+        [workspaceId]
     );
 
     return {
-        settings,
+        settings: settings.ui,
+        aiSettings: settings.ai,
         loading,
         setHidePastUnsent,
+        setBrandVoice,
+        setHashtagStyle,
     };
 }
