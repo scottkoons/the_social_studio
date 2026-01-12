@@ -1,28 +1,58 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { collection, query, onSnapshot, orderBy, doc, setDoc, writeBatch, serverTimestamp } from "firebase/firestore";
 import InputTable from "@/components/InputTable";
 import CSVImport from "@/components/CSVImport";
-import { Plus, Trash2, X, CheckCircle2 } from "lucide-react";
+import PageHeader from "@/components/ui/PageHeader";
+import DashboardCard from "@/components/ui/DashboardCard";
+import Toast from "@/components/ui/Toast";
+import { Plus, Trash2, X } from "lucide-react";
 import { format, addDays } from "date-fns";
 import { PostDay } from "@/lib/types";
 import { getTodayInDenver } from "@/lib/utils";
+import { useHidePastUnsent } from "@/hooks/useHidePastUnsent";
 
 export default function InputPage() {
     const { user, workspaceId, workspaceLoading } = useAuth();
+    const searchParams = useSearchParams();
     const [posts, setPosts] = useState<PostDay[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+    // Date from query param for highlighting/scrolling
+    const [highlightedDate, setHighlightedDate] = useState<string | null>(null);
 
     // Delete modal state
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
     // Toast state
-    const [toast, setToast] = useState<string | null>(null);
+    const [toast, setToast] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+
+    // Use shared hook for filtering past unsent posts (controlled from Settings)
+    const { filteredPosts, hidePastUnsent } = useHidePastUnsent(posts);
+
+    // When filter is enabled, deselect any posts that become hidden
+    useEffect(() => {
+        if (!hidePastUnsent) return;
+        const visibleDates = new Set(filteredPosts.map(p => p.date));
+        setSelectedIds(prev => {
+            const filtered = new Set([...prev].filter(id => visibleDates.has(id)));
+            return filtered.size !== prev.size ? filtered : prev;
+        });
+    }, [hidePastUnsent, filteredPosts]);
+
+    // Read date query param on mount
+    useEffect(() => {
+        const dateParam = searchParams.get("date");
+        if (dateParam) {
+            setHighlightedDate(dateParam);
+        }
+    }, [searchParams]);
 
     useEffect(() => {
         if (!user || !workspaceId) return;
@@ -60,7 +90,7 @@ export default function InputPage() {
 
     const onSelectAll = (selected: boolean) => {
         if (selected) {
-            setSelectedIds(new Set(posts.map(p => p.date)));
+            setSelectedIds(new Set(filteredPosts.map(p => p.date)));
         } else {
             setSelectedIds(new Set());
         }
@@ -92,7 +122,7 @@ export default function InputPage() {
             });
         } catch (error) {
             console.error("Error adding row:", error);
-            alert("Failed to add row. This date might already be taken.");
+            showToast('error', "Failed to add row. This date might already be taken.");
         }
     };
 
@@ -119,17 +149,17 @@ export default function InputPage() {
             const deletedCount = selectedIds.size;
             setSelectedIds(new Set());
             setShowDeleteModal(false);
-            showToast(`Deleted ${deletedCount} post${deletedCount !== 1 ? 's' : ''}.`);
+            showToast('success', `Deleted ${deletedCount} post${deletedCount !== 1 ? 's' : ''}.`);
         } catch (error) {
             console.error("Error deleting posts:", error);
-            alert("Failed to delete posts. Please try again.");
+            showToast('error', "Failed to delete posts. Please try again.");
         } finally {
             setIsDeleting(false);
         }
     };
 
-    const showToast = (message: string) => {
-        setToast(message);
+    const showToast = (type: 'success' | 'error', message: string) => {
+        setToast({ type, message });
         setTimeout(() => setToast(null), 4000);
     };
 
@@ -137,76 +167,78 @@ export default function InputPage() {
     if (workspaceLoading || !workspaceId) {
         return (
             <div className="p-4 md:p-8 max-w-7xl mx-auto">
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="p-12 text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500 mx-auto mb-4"></div>
-                        <p className="text-gray-500">Setting up your workspace...</p>
+                <DashboardCard>
+                    <div className="py-16 text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-500 mx-auto mb-4"></div>
+                        <p className="text-sm text-gray-500">Setting up your workspace...</p>
                     </div>
-                </div>
+                </DashboardCard>
             </div>
         );
     }
 
     return (
         <div className="p-4 md:p-8 max-w-7xl mx-auto">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Content Input</h1>
-                    <p className="text-sm text-gray-500">Plan your social media schedule here.</p>
-                </div>
-
-                <div className="flex items-center gap-3">
-                    {selectedIds.size > 0 && (
+            <PageHeader
+                title="Content Input"
+                subtitle="Plan your social media schedule here."
+                actions={
+                    <>
+                        {selectedIds.size > 0 && (
+                            <button
+                                onClick={handleDeleteClick}
+                                disabled={isDeleting}
+                                className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <Trash2 size={16} />
+                                Delete ({selectedIds.size})
+                            </button>
+                        )}
+                        <CSVImport />
                         <button
-                            onClick={handleDeleteClick}
-                            disabled={isDeleting}
-                            className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={addRow}
+                            className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
                         >
-                            <Trash2 size={18} />
-                            Delete ({selectedIds.size})
+                            <Plus size={16} />
+                            Add Row
                         </button>
-                    )}
-                    <CSVImport />
-                    <button
-                        onClick={addRow}
-                        className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm"
-                    >
-                        <Plus size={18} />
-                        Add Row
-                    </button>
-                </div>
-            </div>
+                    </>
+                }
+            />
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <DashboardCard noPadding>
                 {loading ? (
-                    <div className="p-12 text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500 mx-auto mb-4"></div>
-                        <p className="text-gray-500">Loading your schedule...</p>
+                    <div className="py-16 text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-500 mx-auto mb-4"></div>
+                        <p className="text-sm text-gray-500">Loading your schedule...</p>
                     </div>
                 ) : (
                     <InputTable
-                        posts={posts}
+                        posts={filteredPosts}
                         selectedIds={selectedIds}
                         onSelectRow={onSelectRow}
                         onSelectAll={onSelectAll}
+                        highlightedDate={highlightedDate}
+                        onHighlightClear={() => setHighlightedDate(null)}
                     />
                 )}
-            </div>
+            </DashboardCard>
 
             {/* Toast */}
             {toast && (
-                <div className="fixed bottom-8 right-8 z-50 flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl bg-white border border-green-100 text-green-700">
-                    <CheckCircle2 className="text-green-500" size={20} />
-                    <p className="font-semibold text-sm">{toast}</p>
-                </div>
+                <Toast
+                    type={toast.type}
+                    message={toast.message}
+                    onClose={() => setToast(null)}
+                />
             )}
 
             {/* Delete Confirmation Modal */}
             {showDeleteModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
                         {/* Header */}
-                        <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                        <div className="bg-gray-50 px-5 py-4 border-b border-gray-200 flex items-center justify-between">
                             <h3 className="font-semibold text-gray-900">Delete posts?</h3>
                             <button
                                 onClick={() => setShowDeleteModal(false)}
@@ -218,9 +250,9 @@ export default function InputPage() {
                         </div>
 
                         {/* Content */}
-                        <div className="px-6 py-6">
+                        <div className="px-5 py-5">
                             <p className="text-gray-600">
-                                This will permanently delete <span className="font-bold text-gray-900">{selectedIds.size}</span> scheduled post{selectedIds.size !== 1 ? 's' : ''}.
+                                This will permanently delete <span className="font-semibold text-gray-900">{selectedIds.size}</span> scheduled post{selectedIds.size !== 1 ? 's' : ''}.
                             </p>
                             <p className="text-sm text-gray-500 mt-2">
                                 This action cannot be undone. Associated images will not be deleted.
@@ -228,22 +260,22 @@ export default function InputPage() {
                         </div>
 
                         {/* Actions */}
-                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-2">
+                        <div className="px-5 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
                             <button
                                 onClick={() => setShowDeleteModal(false)}
                                 disabled={isDeleting}
-                                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors disabled:opacity-50"
+                                className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors disabled:opacity-50"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleDeleteConfirm}
                                 disabled={isDeleting}
-                                className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {isDeleting ? (
                                     <>
-                                        <span className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white" />
+                                        <span className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white" />
                                         Deleting...
                                     </>
                                 ) : (

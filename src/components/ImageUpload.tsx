@@ -7,7 +7,7 @@ import { PostDay } from "@/lib/types";
 import { storage, db } from "@/lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { doc, setDoc, updateDoc, getDoc, serverTimestamp } from "firebase/firestore";
-import { Image as ImageIcon, X, Upload, Check } from "lucide-react";
+import { Image as ImageIcon, X, Upload } from "lucide-react";
 import Image from "next/image";
 
 interface ImageUploadProps {
@@ -19,7 +19,6 @@ interface ImageUploadProps {
 export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageUploadProps) {
     const { user, workspaceId } = useAuth();
     const [asset, setAsset] = useState<any>(null);
-    const [uploadProgress, setUploadProgress] = useState(0);
 
     useEffect(() => {
         const fetchAsset = async () => {
@@ -101,40 +100,54 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
         }
     };
 
+    // Image preview with asset
     if (asset) {
         return (
-            <div className="relative w-full aspect-video bg-gray-50 rounded-lg overflow-hidden group/img cursor-default border border-gray-100">
+            <div className="relative h-16 w-28 bg-gray-100 rounded-lg overflow-hidden group/img border border-gray-200">
+                {/* Fallback icon while loading */}
                 <div className="absolute inset-0 flex items-center justify-center">
-                    <ImageIcon className="text-gray-200" size={32} />
+                    <ImageIcon className="text-gray-300" size={20} />
                 </div>
+
+                {/* Actual image with object-contain to preserve aspect ratio */}
                 <AssetPreview storagePath={asset.storagePath} />
 
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                {/* Hover overlay with remove button */}
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
                     <button
                         onClick={removeImage}
                         className="p-1.5 bg-white/20 hover:bg-white/40 text-white rounded-full transition-colors"
-                        title="Remove"
+                        title="Remove image"
                     >
-                        <X size={16} />
+                        <X size={14} />
                     </button>
                 </div>
-                <div className="absolute bottom-1 right-1 bg-white/90 px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-600 backdrop-blur-sm">
+
+                {/* Filename badge */}
+                <div className="absolute bottom-0.5 right-0.5 bg-white/90 px-1 py-0.5 rounded text-[8px] font-medium text-gray-600 max-w-[100px] truncate">
                     {asset.fileName}
                 </div>
             </div>
         );
     }
 
+    // Upload dropzone
     return (
         <div
             {...getRootProps()}
-            className={`relative w-full aspect-video rounded-lg border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center p-4 text-center
-        ${isDragActive ? 'border-teal-500 bg-teal-50 text-teal-600' : 'border-gray-200 text-gray-400 hover:border-teal-400 hover:bg-gray-50'}`}
+            className={`
+                relative h-16 w-28 rounded-lg border-2 border-dashed transition-all cursor-pointer
+                flex flex-col items-center justify-center text-center
+                ${isDragActive
+                    ? 'border-teal-500 bg-teal-50 text-teal-600'
+                    : 'border-gray-200 text-gray-400 hover:border-teal-400 hover:bg-gray-50'
+                }
+            `}
         >
             <input {...getInputProps()} />
-            <Upload size={20} className="mb-2" />
-            <p className="text-[10px] font-medium leading-tight">
-                {isDragActive ? "Drop it!" : "Drag image or click"}
+            <Upload size={16} className="mb-1" />
+            <p className="text-[9px] font-medium leading-tight">
+                {isDragActive ? "Drop it!" : "Drop or click"}
             </p>
         </div>
     );
@@ -142,6 +155,7 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
 
 function AssetPreview({ storagePath }: { storagePath: string }) {
     const [url, setUrl] = useState<string | null>(null);
+    const [error, setError] = useState(false);
 
     useEffect(() => {
         const getUrl = async () => {
@@ -150,20 +164,21 @@ function AssetPreview({ storagePath }: { storagePath: string }) {
                 setUrl(downloadUrl);
             } catch (err) {
                 console.error("Preview error:", err);
+                setError(true);
             }
         };
         getUrl();
     }, [storagePath]);
 
-    if (!url) return null;
+    if (error || !url) return null;
 
     return (
         <Image
             src={url}
             alt="Preview"
             fill
-            className="object-cover"
-            sizes="200px"
+            className="object-contain"
+            sizes="112px"
         />
     );
 }

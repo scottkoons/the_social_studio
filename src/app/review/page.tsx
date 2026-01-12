@@ -5,17 +5,36 @@ import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { collection, query, onSnapshot, orderBy, doc, updateDoc, writeBatch, serverTimestamp } from "firebase/firestore";
 import ReviewTable from "@/components/ReviewTable";
+import PageHeader from "@/components/ui/PageHeader";
+import DashboardCard from "@/components/ui/DashboardCard";
+import Toast from "@/components/ui/Toast";
 import { PostDay } from "@/lib/types";
-import { Play, Send, CheckCircle2, AlertCircle } from "lucide-react";
+import { Play, Send, CheckCircle2 } from "lucide-react";
 import { generateAiStub } from "@/lib/ai-stubs";
 import { sendToBufferStub } from "@/lib/buffer-stubs";
+import { useHidePastUnsent } from "@/hooks/useHidePastUnsent";
 
 export default function ReviewPage() {
     const { user, workspaceId, workspaceLoading } = useAuth();
     const [posts, setPosts] = useState<PostDay[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-    const [toast, setToast] = useState<{ type: 'success' | 'warn', message: string } | null>(null);
+    const [toast, setToast] = useState<{ type: 'success' | 'warn' | 'error', message: string } | null>(null);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [isSending, setIsSending] = useState(false);
+
+    // Use shared hook for filtering past unsent posts (controlled from Settings)
+    const { filteredPosts, hidePastUnsent } = useHidePastUnsent(posts);
+
+    // When filter is enabled, deselect any posts that become hidden
+    useEffect(() => {
+        if (!hidePastUnsent) return;
+        const visibleDates = new Set(filteredPosts.map(p => p.date));
+        setSelectedIds(prev => {
+            const filtered = new Set([...prev].filter(id => visibleDates.has(id)));
+            return filtered.size !== prev.size ? filtered : prev;
+        });
+    }, [hidePastUnsent, filteredPosts]);
 
     useEffect(() => {
         if (!user || !workspaceId) return;
@@ -35,7 +54,7 @@ export default function ReviewPage() {
         return () => unsubscribe();
     }, [user, workspaceId]);
 
-    const showToast = useCallback((type: 'success' | 'warn', message: string) => {
+    const showToast = useCallback((type: 'success' | 'warn' | 'error', message: string) => {
         setToast({ type, message });
         setTimeout(() => setToast(null), 4000);
     }, []);
@@ -50,7 +69,7 @@ export default function ReviewPage() {
     };
 
     const onSelectAll = (selected: boolean) => {
-        if (selected) setSelectedIds(new Set(posts.map(p => p.date)));
+        if (selected) setSelectedIds(new Set(filteredPosts.map(p => p.date)));
         else setSelectedIds(new Set());
     };
 
@@ -62,6 +81,7 @@ export default function ReviewPage() {
 
         if (targets.length === 0) return;
 
+        setIsGenerating(true);
         const batch = writeBatch(db);
         for (const post of targets) {
             const updatedData = await generateAiStub(post);
@@ -74,10 +94,12 @@ export default function ReviewPage() {
 
         try {
             await batch.commit();
-            showToast('success', `Generated content for ${targets.length} posts.`);
+            showToast('success', `Generated content for ${targets.length} post${targets.length !== 1 ? 's' : ''}.`);
         } catch (err) {
             console.error("Batch generate error:", err);
-            showToast('warn', "Failed to generate some posts.");
+            showToast('error', "Failed to generate some posts.");
+        } finally {
+            setIsGenerating(false);
         }
     };
 
@@ -89,6 +111,7 @@ export default function ReviewPage() {
 
         if (targets.length === 0) return;
 
+        setIsSending(true);
         let successCount = 0;
         let failCount = 0;
 
@@ -107,10 +130,12 @@ export default function ReviewPage() {
             }
         }
 
+        setIsSending(false);
+
         if (failCount > 0) {
             showToast('warn', `Sent ${successCount} posts. ${failCount} skipped (past date).`);
         } else {
-            showToast('success', `Successfully sent ${successCount} posts to Buffer.`);
+            showToast('success', `Successfully sent ${successCount} post${successCount !== 1 ? 's' : ''} to Buffer.`);
         }
     };
 
@@ -118,75 +143,95 @@ export default function ReviewPage() {
     if (workspaceLoading || !workspaceId) {
         return (
             <div className="p-4 md:p-8 max-w-7xl mx-auto">
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="p-12 text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500 mx-auto mb-4"></div>
-                        <p className="text-gray-500">Setting up your workspace...</p>
+                <DashboardCard>
+                    <div className="py-16 text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-500 mx-auto mb-4"></div>
+                        <p className="text-sm text-gray-500">Setting up your workspace...</p>
                     </div>
-                </div>
+                </DashboardCard>
             </div>
         );
     }
 
     return (
         <div className="p-4 md:p-8 max-w-7xl mx-auto">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Review & AI Generation</h1>
-                    <p className="text-sm text-gray-500">Fine-tune AI output and push to social channels.</p>
-                </div>
+            <PageHeader
+                title="Review & AI Generation"
+                subtitle="Fine-tune AI output and push to social channels."
+                actions={
+                    <>
+                        <button
+                            onClick={handleGenerateBatch}
+                            disabled={isGenerating}
+                            className="inline-flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isGenerating ? (
+                                <>
+                                    <span className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-teal-500" />
+                                    Generating...
+                                </>
+                            ) : (
+                                <>
+                                    <Play size={16} className="text-teal-600 fill-teal-600" />
+                                    Generate {selectedIds.size > 0 ? "Selected" : "All"}
+                                </>
+                            )}
+                        </button>
 
-                <div className="flex flex-wrap items-center gap-3">
-                    <button
-                        onClick={handleGenerateBatch}
-                        className="flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors shadow-sm"
-                    >
-                        <Play size={16} className="text-teal-600 fill-teal-600" />
-                        Generate {selectedIds.size > 0 ? "Selected" : "Batch"}
-                    </button>
+                        <button
+                            onClick={() => handleSendToBuffer(true)}
+                            disabled={selectedIds.size === 0 || isSending}
+                            className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <Send size={16} />
+                            Send Selected
+                        </button>
 
-                    <button
-                        onClick={() => handleSendToBuffer(true)}
-                        disabled={selectedIds.size === 0}
-                        className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        <Send size={16} />
-                        Send Selected
-                    </button>
+                        <button
+                            onClick={() => handleSendToBuffer(false)}
+                            disabled={isSending || posts.length === 0}
+                            className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isSending ? (
+                                <>
+                                    <span className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white" />
+                                    Sending...
+                                </>
+                            ) : (
+                                <>
+                                    <CheckCircle2 size={16} />
+                                    Send All
+                                </>
+                            )}
+                        </button>
+                    </>
+                }
+            />
 
-                    <button
-                        onClick={() => handleSendToBuffer(false)}
-                        className="flex items-center gap-2 bg-navy-900 hover:bg-navy-800 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm"
-                    >
-                        <CheckCircle2 size={16} />
-                        Send All
-                    </button>
-                </div>
-            </div>
-
-            {toast && (
-                <div className={`fixed bottom-8 right-8 z-50 flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl animate-in slide-in-from-bottom border ${toast.type === 'success' ? 'bg-white border-green-100 text-green-700' : 'bg-white border-red-100 text-red-700'
-                    }`}>
-                    {toast.type === 'success' ? <CheckCircle2 className="text-green-500" /> : <AlertCircle className="text-red-500" />}
-                    <p className="font-semibold text-sm">{toast.message}</p>
-                </div>
-            )}
-
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <DashboardCard noPadding>
                 {loading ? (
-                    <div className="p-12 text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500 mx-auto mb-4"></div>
-                        <p className="text-gray-500">Loading posts for review...</p>
+                    <div className="py-16 text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-500 mx-auto mb-4"></div>
+                        <p className="text-sm text-gray-500">Loading posts for review...</p>
                     </div>
                 ) : (
                     <ReviewTable
-                        posts={posts}
+                        posts={filteredPosts}
                         selectedIds={selectedIds}
                         onSelectRow={onSelectRow}
                         onSelectAll={onSelectAll}
                     />
                 )}
-            </div>
+            </DashboardCard>
+
+            {/* Toast */}
+            {toast && (
+                <Toast
+                    type={toast.type}
+                    message={toast.message}
+                    onClose={() => setToast(null)}
+                />
+            )}
         </div>
     );
 }

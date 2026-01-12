@@ -392,15 +392,15 @@ export default function CSVImport() {
 
     return (
         <div className="relative">
-            <label className="flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors cursor-pointer shadow-sm">
+            <label className="inline-flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer">
                 {isImporting || importingImages ? (
-                    <span className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-teal-500" />
+                    <span className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-teal-500" />
                 ) : (
-                    <FileDown size={18} />
+                    <FileDown size={16} />
                 )}
                 {importingImages ? (
-                    <span className="text-sm">
-                        Importing images ({imageProgress.current}/{imageProgress.total})
+                    <span>
+                        Importing ({imageProgress.current}/{imageProgress.total})
                     </span>
                 ) : (
                     "Import CSV"
