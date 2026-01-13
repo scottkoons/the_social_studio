@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { db, functions } from "@/lib/firebase";
+import { db, functions, storage } from "@/lib/firebase";
 import { collection, query, onSnapshot, orderBy, doc, deleteDoc } from "firebase/firestore";
+import { ref, getDownloadURL } from "firebase/storage";
 import { httpsCallable } from "firebase/functions";
 import ReviewTable from "@/components/ReviewTable";
 import PageHeader from "@/components/ui/PageHeader";
@@ -33,6 +34,7 @@ export default function ReviewPage() {
     const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
     const [showExportModal, setShowExportModal] = useState(false);
     const [imageUrls, setImageUrls] = useState<Map<string, string>>(new Map());
+    const [imageUrlsLoading, setImageUrlsLoading] = useState(true);
 
     // Use shared hook for filtering past unsent posts (controlled from Settings)
     const { filteredPosts, hidePastUnsent } = useHidePastUnsent(posts);
@@ -66,19 +68,40 @@ export default function ReviewPage() {
     }, [user, workspaceId]);
 
     // Fetch image URLs from assets collection for Buffer export
+    // Resolves URLs for all assets (both imported with downloadUrl and uploaded with storagePath)
     useEffect(() => {
         if (!workspaceId) return;
 
+        setImageUrlsLoading(true);
         const assetsRef = collection(db, "workspaces", workspaceId, "assets");
-        const unsubscribe = onSnapshot(assetsRef, (snapshot) => {
+        const unsubscribe = onSnapshot(assetsRef, async (snapshot) => {
             const urls = new Map<string, string>();
-            snapshot.docs.forEach((doc) => {
-                const data = doc.data();
+            const resolvePromises: Promise<void>[] = [];
+
+            snapshot.docs.forEach((assetDoc) => {
+                const data = assetDoc.data();
+                const assetId = assetDoc.id;
+
                 if (data.downloadUrl) {
-                    urls.set(doc.id, data.downloadUrl);
+                    // Imported images have downloadUrl stored directly
+                    urls.set(assetId, data.downloadUrl);
+                } else if (data.storagePath) {
+                    // Uploaded images need URL resolved from storagePath
+                    const promise = getDownloadURL(ref(storage, data.storagePath))
+                        .then((url) => {
+                            urls.set(assetId, url);
+                        })
+                        .catch((err) => {
+                            console.warn(`Failed to resolve URL for asset ${assetId}:`, err);
+                        });
+                    resolvePromises.push(promise);
                 }
             });
+
+            // Wait for all URL resolutions to complete
+            await Promise.all(resolvePromises);
             setImageUrls(urls);
+            setImageUrlsLoading(false);
         });
 
         return () => unsubscribe();
@@ -436,6 +459,7 @@ export default function ReviewPage() {
                 open={showExportModal}
                 posts={getPostsForExport()}
                 imageUrls={imageUrls}
+                imageUrlsLoading={imageUrlsLoading}
                 onClose={() => setShowExportModal(false)}
                 onExportComplete={handleExportComplete}
             />

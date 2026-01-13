@@ -10,12 +10,14 @@ import {
     downloadZip,
     getExportFilename,
     BufferPlatform,
+    postHasImage,
 } from "@/lib/bufferCsvExport";
 
 interface BufferExportModalProps {
     open: boolean;
     posts: PostDay[];
     imageUrls: Map<string, string>;
+    imageUrlsLoading?: boolean;
     onClose: () => void;
     onExportComplete: (summary: { exported: number; skipped: number }) => void;
 }
@@ -24,6 +26,7 @@ export default function BufferExportModal({
     open,
     posts,
     imageUrls,
+    imageUrlsLoading = false,
     onClose,
     onExportComplete,
 }: BufferExportModalProps) {
@@ -76,8 +79,20 @@ export default function BufferExportModal({
         });
     };
 
-    // Calculate preview stats
-    const postsWithImages = posts.filter((p) => p.imageAssetId && imageUrls.has(p.imageAssetId));
+    // Calculate preview stats using the same resolver as export
+    const postsWithImages = posts.filter((p) => {
+        const hasImage = postHasImage(p, imageUrls);
+        // DEBUG: Log posts counted as missing image
+        if (!hasImage && !imageUrlsLoading) {
+            console.warn("[BufferExport] missing image", {
+                date: p.date,
+                imageAssetId: p.imageAssetId,
+                imageUrl: p.imageUrl,
+                assetUrlInMap: p.imageAssetId ? imageUrls.has(p.imageAssetId) : false,
+            });
+        }
+        return hasImage;
+    });
     const postsWithCaption = postsWithImages.filter(
         (p) => p.ai?.ig?.caption || p.ai?.fb?.caption
     );
@@ -189,32 +204,41 @@ export default function BufferExportModal({
 
                     {/* Export Summary */}
                     <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                        <div className="flex justify-between text-sm">
-                            <span className="text-gray-600">Posts to export:</span>
-                            <span className="font-medium text-gray-900">{eligibleCount}</span>
-                        </div>
-                        {skippedNoImage > 0 && (
-                            <div className="flex justify-between text-sm">
-                                <span className="text-amber-600 flex items-center gap-1">
-                                    <AlertCircle size={14} />
-                                    Missing image:
-                                </span>
-                                <span className="font-medium text-amber-600">{skippedNoImage}</span>
+                        {imageUrlsLoading ? (
+                            <div className="flex items-center gap-2 text-gray-500">
+                                <span className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-teal-500" />
+                                <span className="text-sm">Loading images...</span>
                             </div>
-                        )}
-                        {skippedNoCaption > 0 && (
-                            <div className="flex justify-between text-sm">
-                                <span className="text-amber-600 flex items-center gap-1">
-                                    <AlertCircle size={14} />
-                                    No caption:
-                                </span>
-                                <span className="font-medium text-amber-600">{skippedNoCaption}</span>
-                            </div>
-                        )}
-                        {selectedPlatforms.size === 2 && eligibleCount > 0 && (
-                            <div className="text-xs text-gray-500 pt-2 border-t border-gray-200">
-                                Will download as ZIP with separate CSV files for each platform.
-                            </div>
+                        ) : (
+                            <>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-gray-600">Posts to export:</span>
+                                    <span className="font-medium text-gray-900">{eligibleCount}</span>
+                                </div>
+                                {skippedNoImage > 0 && (
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-600 flex items-center gap-1">
+                                            <AlertCircle size={14} />
+                                            Missing image:
+                                        </span>
+                                        <span className="font-medium text-amber-600">{skippedNoImage}</span>
+                                    </div>
+                                )}
+                                {skippedNoCaption > 0 && (
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-600 flex items-center gap-1">
+                                            <AlertCircle size={14} />
+                                            No caption:
+                                        </span>
+                                        <span className="font-medium text-amber-600">{skippedNoCaption}</span>
+                                    </div>
+                                )}
+                                {selectedPlatforms.size === 2 && eligibleCount > 0 && (
+                                    <div className="text-xs text-gray-500 pt-2 border-t border-gray-200">
+                                        Will download as ZIP with separate CSV files for each platform.
+                                    </div>
+                                )}
+                            </>
                         )}
                     </div>
                 </div>
@@ -229,7 +253,7 @@ export default function BufferExportModal({
                     </button>
                     <button
                         onClick={handleExport}
-                        disabled={selectedPlatforms.size === 0 || eligibleCount === 0 || isExporting}
+                        disabled={selectedPlatforms.size === 0 || eligibleCount === 0 || isExporting || imageUrlsLoading}
                         className="px-4 py-2 text-sm font-medium rounded-lg transition-colors bg-teal-600 hover:bg-teal-700 text-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
                     >
                         {isExporting ? (

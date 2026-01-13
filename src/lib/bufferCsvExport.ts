@@ -30,6 +30,38 @@ function escapeCsvField(value: string): string {
 }
 
 /**
+ * Resolves the image URL for a post.
+ * Priority:
+ * 1. post.imageUrl (direct URL set by importImageFromUrl)
+ * 2. imageUrls map lookup by imageAssetId
+ * 3. undefined if no image
+ */
+export function resolveImageUrl(
+    post: PostDay,
+    imageUrls: Map<string, string>
+): string | undefined {
+    // First check direct imageUrl on the post
+    if (post.imageUrl) {
+        return post.imageUrl;
+    }
+    // Fall back to asset lookup
+    if (post.imageAssetId) {
+        return imageUrls.get(post.imageAssetId);
+    }
+    return undefined;
+}
+
+/**
+ * Checks if a post has an image that can be exported.
+ */
+export function postHasImage(
+    post: PostDay,
+    imageUrls: Map<string, string>
+): boolean {
+    return !!resolveImageUrl(post, imageUrls);
+}
+
+/**
  * Generates a Buffer-compatible CSV for bulk upload.
  *
  * Buffer CSV format:
@@ -55,16 +87,17 @@ export function generateBufferCsv(
     const skippedDates: string[] = [];
 
     for (const post of posts) {
-        // Skip if no image
-        if (!post.imageAssetId) {
-            skippedNoImage++;
-            skippedDates.push(post.date);
-            continue;
-        }
+        // Resolve image URL (check post.imageUrl first, then asset lookup)
+        const imageUrl = resolveImageUrl(post, imageUrls);
 
-        // Get image URL
-        const imageUrl = imageUrls.get(post.imageAssetId);
         if (!imageUrl) {
+            // DEBUG: Log skipped posts for image issues
+            console.debug("[BufferExport] Skipped - no image:", {
+                date: post.date,
+                imageAssetId: post.imageAssetId,
+                imageUrl: post.imageUrl,
+                assetUrlFound: post.imageAssetId ? imageUrls.has(post.imageAssetId) : false,
+            });
             skippedNoImage++;
             skippedDates.push(post.date);
             continue;
@@ -73,6 +106,13 @@ export function generateBufferCsv(
         // Get caption for the platform
         const platformData = platform === "instagram" ? post.ai?.ig : post.ai?.fb;
         if (!platformData?.caption) {
+            // DEBUG: Log skipped posts for caption issues
+            console.debug("[BufferExport] Skipped - no caption:", {
+                date: post.date,
+                platform,
+                hasIgCaption: !!post.ai?.ig?.caption,
+                hasFbCaption: !!post.ai?.fb?.caption,
+            });
             skippedNoCaption++;
             skippedDates.push(post.date);
             continue;

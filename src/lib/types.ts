@@ -23,6 +23,7 @@ export interface PostDay {
     date: string; // YYYY-MM-DD, also used as Firestore doc ID
     starterText?: string;
     imageAssetId?: string;
+    imageUrl?: string; // Direct download URL (set by importImageFromUrl)
     status: "input" | "generated" | "edited" | "sent" | "error";
     ai?: PostDayAI;
     buffer?: {
