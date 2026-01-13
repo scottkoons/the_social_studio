@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { db, storage } from "@/lib/firebase";
-import { collection, query, where, onSnapshot, documentId, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, documentId, doc, getDoc, setDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { ref, getDownloadURL } from "firebase/storage";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCard from "@/components/ui/DashboardCard";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { format, startOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, isSameMonth } from "date-fns";
 import { PostDay } from "@/lib/types";
 import { getTodayInDenver } from "@/lib/utils";
@@ -17,12 +17,27 @@ import Image from "next/image";
 
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// Drag and drop data type
+interface DragData {
+    sourceDate: string;
+    post: PostDay;
+}
+
 export default function CalendarPage() {
     const { user, workspaceId, workspaceLoading } = useAuth();
     const router = useRouter();
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [posts, setPosts] = useState<Map<string, PostDay>>(new Map());
     const [loading, setLoading] = useState(true);
+
+    // Drag and drop state
+    const [draggedPost, setDraggedPost] = useState<DragData | null>(null);
+    const [dropTarget, setDropTarget] = useState<string | null>(null);
+
+    // Overwrite confirmation modal state
+    const [showOverwriteModal, setShowOverwriteModal] = useState(false);
+    const [pendingDrop, setPendingDrop] = useState<{ source: DragData; targetDate: string } | null>(null);
+    const [isMoving, setIsMoving] = useState(false);
 
     // Global setting for hiding past unsent posts
     const { settings } = useWorkspaceUiSettings();
@@ -64,12 +79,108 @@ export default function CalendarPage() {
     const goToNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
     const goToToday = () => setCurrentMonth(new Date());
 
+    // Move post from one date to another in Firestore
+    const movePost = useCallback(async (sourceDate: string, targetDate: string, overwrite: boolean = false) => {
+        if (!workspaceId || sourceDate === targetDate) return;
+
+        const sourcePost = posts.get(sourceDate);
+        if (!sourcePost) return;
+
+        const targetPost = posts.get(targetDate);
+
+        // If target has a post and we're not overwriting, show confirmation
+        if (targetPost && !overwrite) {
+            setPendingDrop({ source: { sourceDate, post: sourcePost }, targetDate });
+            setShowOverwriteModal(true);
+            return;
+        }
+
+        setIsMoving(true);
+        try {
+            const sourceDocRef = doc(db, "workspaces", workspaceId, "post_days", sourceDate);
+            const targetDocRef = doc(db, "workspaces", workspaceId, "post_days", targetDate);
+
+            // If overwriting, the target doc will be replaced
+            // Copy source post data to target date
+            await setDoc(targetDocRef, {
+                ...sourcePost,
+                date: targetDate,
+                updatedAt: serverTimestamp(),
+            });
+
+            // Delete source post
+            await deleteDoc(sourceDocRef);
+
+        } catch (err) {
+            console.error("Move post error:", err);
+        } finally {
+            setIsMoving(false);
+            setDraggedPost(null);
+            setDropTarget(null);
+        }
+    }, [workspaceId, posts]);
+
+    // Handle overwrite confirmation
+    const handleOverwriteConfirm = async () => {
+        if (!pendingDrop) return;
+        setShowOverwriteModal(false);
+        await movePost(pendingDrop.source.sourceDate, pendingDrop.targetDate, true);
+        setPendingDrop(null);
+    };
+
+    const handleOverwriteCancel = () => {
+        setShowOverwriteModal(false);
+        setPendingDrop(null);
+        setDraggedPost(null);
+        setDropTarget(null);
+    };
+
+    // Drag handlers
+    const handleDragStart = useCallback((dateStr: string, post: PostDay) => {
+        setDraggedPost({ sourceDate: dateStr, post });
+    }, []);
+
+    const handleDragEnd = useCallback(() => {
+        setDraggedPost(null);
+        setDropTarget(null);
+    }, []);
+
+    const handleDragOver = useCallback((e: React.DragEvent, dateStr: string) => {
+        e.preventDefault();
+        if (draggedPost && dateStr !== draggedPost.sourceDate) {
+            setDropTarget(dateStr);
+        }
+    }, [draggedPost]);
+
+    const handleDragLeave = useCallback(() => {
+        setDropTarget(null);
+    }, []);
+
+    const handleDrop = useCallback((e: React.DragEvent, targetDate: string) => {
+        e.preventDefault();
+        if (draggedPost && targetDate !== draggedPost.sourceDate) {
+            movePost(draggedPost.sourceDate, targetDate);
+        }
+        setDropTarget(null);
+    }, [draggedPost, movePost]);
+
+    // Click handlers (stubbed for future edit modal)
+    const handlePostClick = useCallback((dateStr: string, post: PostDay) => {
+        // TODO: Open edit modal instead of navigating
+        router.push(`/review?date=${dateStr}`);
+    }, [router]);
+
+    const handleEmptyDayClick = useCallback((dateStr: string) => {
+        // TODO: Open create modal instead of navigating
+        router.push(`/input?date=${dateStr}`);
+    }, [router]);
+
     const handleDayClick = (dateStr: string) => {
         const post = posts.get(dateStr);
         if (post) {
-            router.push(`/review?date=${dateStr}`);
+            handlePostClick(dateStr, post);
         } else {
-            router.push(`/input?date=${dateStr}`);
+            handleEmptyDayClick(dateStr);
         }
     };
 
@@ -172,19 +283,31 @@ export default function CalendarPage() {
 
                                 // If hiding past unsent, treat as no post for display
                                 const post = shouldHidePost ? undefined : rawPost;
-                                const isPastDue = isPast && !!post && post.status !== "sent";
+
+                                // Compute skip reasons for display
+                                const isMissingImage = !!post && !post.imageAssetId;
+                                const isPastDate = isPast && !!post;
+                                const wouldBeSkipped = isPastDate || isMissingImage;
 
                                 return (
                                     <DayCell
                                         key={dateStr}
+                                        dateStr={dateStr}
                                         day={day}
                                         post={post}
                                         isCurrentMonth={isCurrentMonth}
                                         isToday={isToday}
                                         isPast={isPast}
-                                        isPastDue={isPastDue}
+                                        wouldBeSkipped={wouldBeSkipped}
                                         onClick={() => handleDayClick(dateStr)}
                                         workspaceId={workspaceId}
+                                        isDragging={draggedPost?.sourceDate === dateStr}
+                                        isDropTarget={dropTarget === dateStr}
+                                        onDragStart={handleDragStart}
+                                        onDragEnd={handleDragEnd}
+                                        onDragOver={handleDragOver}
+                                        onDragLeave={handleDragLeave}
+                                        onDrop={handleDrop}
                                     />
                                 );
                             })}
@@ -192,32 +315,123 @@ export default function CalendarPage() {
                     </>
                 )}
             </DashboardCard>
+
+            {/* Overwrite Confirmation Modal */}
+            {showOverwriteModal && pendingDrop && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
+                        {/* Header */}
+                        <div className="bg-gray-50 px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+                            <h3 className="font-semibold text-gray-900">Date already has a post</h3>
+                            <button
+                                onClick={handleOverwriteCancel}
+                                className="text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="px-5 py-5">
+                            <p className="text-gray-600">
+                                A post already exists on <span className="font-semibold text-gray-900 font-mono">{pendingDrop.targetDate}</span>.
+                            </p>
+                            <p className="text-sm text-gray-500 mt-2">
+                                Do you want to overwrite it? This will replace the existing post with the one you're moving.
+                            </p>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="px-5 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
+                            <button
+                                onClick={handleOverwriteCancel}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+                                disabled={isMoving}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleOverwriteConfirm}
+                                disabled={isMoving}
+                                className="px-4 py-2 text-sm font-medium bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                {isMoving ? "Moving..." : "Overwrite"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
 
 interface DayCellProps {
+    dateStr: string;
     day: Date;
     post: PostDay | undefined;
     isCurrentMonth: boolean;
     isToday: boolean;
     isPast: boolean;
-    isPastDue: boolean;
+    wouldBeSkipped: boolean;
     onClick: () => void;
     workspaceId: string;
+    isDragging: boolean;
+    isDropTarget: boolean;
+    onDragStart: (dateStr: string, post: PostDay) => void;
+    onDragEnd: () => void;
+    onDragOver: (e: React.DragEvent, dateStr: string) => void;
+    onDragLeave: () => void;
+    onDrop: (e: React.DragEvent, dateStr: string) => void;
 }
 
-function DayCell({ day, post, isCurrentMonth, isToday, isPast, isPastDue, onClick, workspaceId }: DayCellProps) {
+function DayCell({
+    dateStr,
+    day,
+    post,
+    isCurrentMonth,
+    isToday,
+    isPast,
+    wouldBeSkipped,
+    onClick,
+    workspaceId,
+    isDragging,
+    isDropTarget,
+    onDragStart,
+    onDragEnd,
+    onDragOver,
+    onDragLeave,
+    onDrop,
+}: DayCellProps) {
+    // Show warning background for posts that would be skipped (and not sent/error)
+    const showWarningBg = wouldBeSkipped && post && post.status !== 'sent' && post.status !== 'error';
+
+    const handleDragStart = (e: React.DragEvent) => {
+        if (post) {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', dateStr);
+            onDragStart(dateStr, post);
+        }
+    };
+
     return (
-        <button
+        <div
+            draggable={!!post}
+            onDragStart={handleDragStart}
+            onDragEnd={onDragEnd}
+            onDragOver={(e) => onDragOver(e, dateStr)}
+            onDragLeave={onDragLeave}
+            onDrop={(e) => onDrop(e, dateStr)}
             onClick={onClick}
             className={`
                 relative min-h-[80px] md:min-h-[100px] p-1.5 border-b border-r border-gray-100
-                text-left transition-colors group
+                text-left transition-all cursor-pointer group
                 ${isCurrentMonth ? 'bg-white' : 'bg-gray-50/50'}
-                ${isPastDue ? 'bg-red-50/30' : ''}
+                ${showWarningBg ? 'bg-yellow-50/30' : ''}
                 ${!isPast && isCurrentMonth ? 'hover:bg-gray-50' : ''}
                 ${isPast && isCurrentMonth ? 'hover:bg-gray-100/50' : ''}
+                ${isDragging ? 'opacity-50 ring-2 ring-teal-500 ring-inset' : ''}
+                ${isDropTarget ? 'bg-teal-100 ring-2 ring-teal-500 ring-inset' : ''}
+                ${post ? 'cursor-grab active:cursor-grabbing' : ''}
             `}
         >
             {/* Day number */}
@@ -232,17 +446,17 @@ function DayCell({ day, post, isCurrentMonth, isToday, isPast, isPastDue, onClic
                     {format(day, "d")}
                 </span>
 
-                {/* Past due indicator */}
-                {isPastDue && (
-                    <span className="text-[8px] font-semibold text-red-600 bg-red-100 px-1 py-0.5 rounded uppercase">
-                        Past due
+                {/* Skip reason indicator */}
+                {showWarningBg && (
+                    <span className="text-[8px] font-semibold text-yellow-700 bg-yellow-100 px-1 py-0.5 rounded uppercase">
+                        Not Sent
                     </span>
                 )}
             </div>
 
             {/* Post content */}
             {post && (
-                <div className={`${isPast && post.status !== 'sent' ? 'opacity-60' : ''}`}>
+                <div className={`${wouldBeSkipped && post.status !== 'sent' ? 'opacity-60' : ''}`}>
                     {/* Thumbnail */}
                     {post.imageAssetId && (
                         <div className="relative w-full h-10 md:h-14 mb-1 rounded overflow-hidden bg-gray-100">
@@ -254,14 +468,23 @@ function DayCell({ day, post, isCurrentMonth, isToday, isPast, isPastDue, onClic
                     )}
 
                     {/* Status indicator */}
-                    <StatusDot status={post.status} isPastDue={isPastDue} />
+                    <StatusDot status={post.status} wouldBeSkipped={wouldBeSkipped} />
                 </div>
             )}
-        </button>
+
+            {/* Drop target indicator */}
+            {isDropTarget && (
+                <div className="absolute inset-0 flex items-center justify-center bg-teal-500/10 pointer-events-none">
+                    <span className="text-xs font-medium text-teal-700 bg-white/90 px-2 py-1 rounded shadow">
+                        Drop here
+                    </span>
+                </div>
+            )}
+        </div>
     );
 }
 
-function StatusDot({ status, isPastDue }: { status: PostDay['status']; isPastDue: boolean }) {
+function StatusDot({ status, wouldBeSkipped }: { status: PostDay['status']; wouldBeSkipped: boolean }) {
     const statusColors: Record<PostDay['status'], { bg: string; text: string; label: string }> = {
         input: { bg: 'bg-gray-200', text: 'text-gray-600', label: 'Input' },
         generated: { bg: 'bg-amber-200', text: 'text-amber-700', label: 'Generated' },
@@ -270,19 +493,31 @@ function StatusDot({ status, isPastDue }: { status: PostDay['status']; isPastDue
         error: { bg: 'bg-red-200', text: 'text-red-700', label: 'Error' },
     };
 
-    // UI-only override: show "Not Sent" yellow pill for past-due posts
+    // UI-only override: show "Not Sent" yellow pill for skipped posts
     const notSentStyle = { bg: 'bg-yellow-200', text: 'text-yellow-700', label: 'Not Sent' };
 
-    const { bg, text, label } = (isPastDue && status !== 'sent')
-        ? notSentStyle
-        : (statusColors[status] || statusColors.input);
+    // Status priority:
+    // 1. 'sent' always shows green Sent
+    // 2. 'error' always shows red Error
+    // 3. If wouldBeSkipped, show yellow Not Sent
+    // 4. Otherwise, show the stored status
+    let config;
+    if (status === 'sent') {
+        config = statusColors.sent;
+    } else if (status === 'error') {
+        config = statusColors.error;
+    } else if (wouldBeSkipped) {
+        config = notSentStyle;
+    } else {
+        config = statusColors[status] || statusColors.input;
+    }
 
     return (
         <span className={`
             inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium
-            ${bg} ${text}
+            ${config.bg} ${config.text}
         `}>
-            {label}
+            {config.label}
         </span>
     );
 }
