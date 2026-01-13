@@ -5,13 +5,90 @@ import Papa from "papaparse";
 import { db, functions } from "@/lib/firebase";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
-import { FileDown, AlertCircle, Check, X, Image, ChevronDown, ChevronUp } from "lucide-react";
+import { FileDown, AlertCircle, Check, X, Image, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+
+// ============================================================================
+// Image URL Validation Helpers (Lightweight - no network requests)
+// ============================================================================
+
+/**
+ * Checks if a string looks like a local file path (not a URL)
+ */
+function isLocalPathLike(str: string): boolean {
+    if (!str) return false;
+    const trimmed = str.trim();
+
+    // Starts with relative or absolute path indicators
+    if (trimmed.startsWith('/') || trimmed.startsWith('./') || trimmed.startsWith('../')) {
+        return true;
+    }
+
+    // Contains OS-specific path patterns
+    if (trimmed.includes('/Users/') || trimmed.includes('C:\\') || trimmed.includes('\\')) {
+        return true;
+    }
+
+    // File protocol
+    if (trimmed.toLowerCase().startsWith('file://')) {
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Checks if a string is a valid http/https URL
+ */
+function isHttpUrl(str: string): boolean {
+    try {
+        const url = new URL(str);
+        return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Lightweight validation of image URL - no network requests.
+ * Server-side Cloud Function handles actual content-type validation.
+ */
+interface ImageValidationResult {
+    valid: boolean;
+    reason?: string;
+}
+
+function validateImageUrl(imageUrl: string | undefined | null): ImageValidationResult {
+    // Empty/missing
+    if (!imageUrl || !imageUrl.trim()) {
+        return { valid: false, reason: 'Empty or missing URL' };
+    }
+
+    const trimmed = imageUrl.trim();
+
+    // Local path
+    if (isLocalPathLike(trimmed)) {
+        return { valid: false, reason: 'Local file path not supported. Upload manually.' };
+    }
+
+    // Not http/https
+    if (!isHttpUrl(trimmed)) {
+        return { valid: false, reason: 'Invalid URL. Must start with http:// or https://' };
+    }
+
+    // Valid URL - server will validate content-type
+    return { valid: true };
+}
+
+// ============================================================================
+// Component Types
+// ============================================================================
 
 interface ParsedRow {
     date: string;
     starterText: string;
     imageUrl?: string;
+    imageValidation?: ImageValidationResult;
 }
 
 interface DuplicateInfo {
@@ -23,9 +100,11 @@ type DuplicateAction = "skip" | "overwrite" | "overwrite-empty";
 
 interface ImportImageResponse {
     success: boolean;
+    skipped?: boolean;
     assetId?: string;
     downloadUrl?: string;
     error?: string;
+    reason?: string;
 }
 
 interface ImageImportError {
@@ -160,8 +239,25 @@ export default function CSVImport() {
                     }
 
                     const parsedRow: ParsedRow = { date, starterText };
-                    if (imageUrl && isValidUrl(imageUrl)) {
-                        parsedRow.imageUrl = imageUrl;
+
+                    // Validate image URL if provided
+                    if (imageUrl && imageUrl.trim()) {
+                        const validation = validateImageUrlForRow(imageUrl.trim());
+                        if (validation?.valid) {
+                            parsedRow.imageUrl = imageUrl.trim();
+                            parsedRow.imageValidation = validation;
+                        } else if (validation) {
+                            // Invalid URL - track for error display but don't include imageUrl
+                            parsedRow.imageValidation = validation;
+                            imageErrorsRef.current.push({
+                                date,
+                                imageUrl: imageUrl.trim(),
+                                reason: validation.reason || 'Invalid URL',
+                                type: 'skipped'
+                            });
+                            countersRef.current.imagesSkipped++;
+                            console.warn(`Image skipped for ${date}: ${validation.reason}`);
+                        }
                     }
 
                     try {
@@ -211,13 +307,16 @@ export default function CSVImport() {
         });
     };
 
-    const isValidUrl = (str: string): boolean => {
-        try {
-            const url = new URL(str);
-            return url.protocol === "http:" || url.protocol === "https:";
-        } catch {
-            return false;
+    /**
+     * Quick validation of image URL during CSV parsing.
+     * Returns the validation result for tracking, but allows the row to proceed.
+     * Full preflight check happens later during processImageImports.
+     */
+    const validateImageUrlForRow = (imageUrl: string | undefined): ImageValidationResult | undefined => {
+        if (!imageUrl || !imageUrl.trim()) {
+            return undefined; // No image URL provided
         }
+        return validateImageUrl(imageUrl);
     };
 
     const importNewRows = async (rows: ParsedRow[]) => {
@@ -304,65 +403,64 @@ export default function CSVImport() {
             const row = rowsWithImagesRef.current[i];
             setImageProgress({ current: i + 1, total: rowsWithImagesRef.current.length });
 
+            const imageUrl = row.imageUrl!;
+
             try {
                 const result = await importImageFromUrl({
                     workspaceId,
                     dateId: row.date,
-                    imageUrl: row.imageUrl!
+                    imageUrl
                 });
 
                 if (result.data.success) {
                     countersRef.current.imagesImported++;
-                } else {
-                    // Cloud function returned success: false with an error message
-                    const errorMsg = result.data.error || 'Unknown error';
-                    const isSkip = isSkipError(errorMsg);
-                    const reason = extractErrorReason(errorMsg);
-
-                    if (isSkip) {
-                        countersRef.current.imagesSkipped++;
-                    } else {
-                        countersRef.current.imagesFailed++;
-                    }
-
+                } else if (result.data.skipped) {
+                    // Server indicated this should be skipped (not an image, etc.)
+                    countersRef.current.imagesSkipped++;
+                    const reason = result.data.reason || result.data.error || 'Not an image';
                     imageErrorsRef.current.push({
                         date: row.date,
-                        imageUrl: row.imageUrl!,
+                        imageUrl,
                         reason,
-                        type: isSkip ? 'skipped' : 'failed'
+                        type: 'skipped'
                     });
-
-                    // Use warn for expected skips, error for real failures
-                    if (isSkip) {
-                        console.warn(`Image skipped (non-image URL): ${row.date}`, reason);
-                    } else {
-                        console.error(`Image upload failed: ${row.date}`, errorMsg);
-                    }
+                    // Only log to console if debugging needed, UI shows details
+                } else {
+                    // Real failure (network error, server error, etc.)
+                    countersRef.current.imagesFailed++;
+                    const reason = result.data.reason || result.data.error || 'Import failed';
+                    imageErrorsRef.current.push({
+                        date: row.date,
+                        imageUrl,
+                        reason,
+                        type: 'failed'
+                    });
+                    console.error(`Image import failed for ${row.date}:`, reason);
                 }
             } catch (err: any) {
                 // Exception thrown (e.g., HttpsError from Cloud Function)
                 const errorMsg = err?.message || String(err);
-                const isSkip = isSkipError(errorMsg);
                 const reason = extractErrorReason(errorMsg);
 
+                // Check if the error message indicates a skip vs failure
+                const isSkip = isSkipError(errorMsg);
                 if (isSkip) {
                     countersRef.current.imagesSkipped++;
+                    imageErrorsRef.current.push({
+                        date: row.date,
+                        imageUrl,
+                        reason,
+                        type: 'skipped'
+                    });
                 } else {
                     countersRef.current.imagesFailed++;
-                }
-
-                imageErrorsRef.current.push({
-                    date: row.date,
-                    imageUrl: row.imageUrl!,
-                    reason,
-                    type: isSkip ? 'skipped' : 'failed'
-                });
-
-                // Use warn for expected skips, error for real failures
-                if (isSkip) {
-                    console.warn(`Image skipped (non-image URL): ${row.date}`, reason);
-                } else {
-                    console.error(`Image upload failed: ${row.date}`, err);
+                    imageErrorsRef.current.push({
+                        date: row.date,
+                        imageUrl,
+                        reason,
+                        type: 'failed'
+                    });
+                    console.error(`Image import failed for ${row.date}:`, errorMsg);
                 }
             }
         }
@@ -587,12 +685,27 @@ export default function CSVImport() {
                                                     : 'bg-red-100/50'
                                             }`}
                                         >
-                                            <div className="font-medium">{error.date}</div>
-                                            <div className="opacity-70 truncate" title={error.imageUrl}>
+                                            <div className="flex items-center gap-1 font-medium">
+                                                {error.type === 'skipped' ? (
+                                                    <AlertTriangle size={10} className="text-yellow-600 shrink-0" />
+                                                ) : (
+                                                    <AlertCircle size={10} className="text-red-600 shrink-0" />
+                                                )}
+                                                {error.date}
+                                            </div>
+                                            <div className="opacity-70 pl-3.5" title={error.imageUrl}>
                                                 {error.reason}
+                                            </div>
+                                            <div className="opacity-50 pl-3.5 truncate text-[9px]" title={error.imageUrl}>
+                                                {error.imageUrl.length > 40 ? error.imageUrl.substring(0, 37) + '...' : error.imageUrl}
                                             </div>
                                         </div>
                                     ))}
+                                    {imageErrors.some(e => e.type === 'skipped') && (
+                                        <div className="pt-2 border-t border-current/10 opacity-60">
+                                            <strong>Tip:</strong> Use direct https image URLs or upload files manually.
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

@@ -33,10 +33,12 @@ export interface PostDay {
 }
 
 export type HashtagStyle = "light" | "medium" | "heavy";
+export type EmojiStyle = "none" | "light" | "medium";
 
 export interface WorkspaceAISettings {
     brandVoice: string;
     hashtagStyle: HashtagStyle;
+    emojiStyle: EmojiStyle;
 }
 
 export interface Asset {

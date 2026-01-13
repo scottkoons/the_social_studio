@@ -6,9 +6,10 @@ import { db } from "@/lib/firebase";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import ImageUpload from "./ImageUpload";
 import StatusPill from "./ui/StatusPill";
-import { Loader2, Pencil, RefreshCw } from "lucide-react";
-import Link from "next/link";
+import ConfirmModal from "./ui/ConfirmModal";
+import { Loader2, RefreshCw, Trash2, AlertCircle } from "lucide-react";
 import { isPastOrTodayInDenver, normalizeHashtagsArray, appendGlobalHashtags } from "@/lib/utils";
+import { movePostDay } from "@/lib/postDayMove";
 import { useAuth } from "@/context/AuthContext";
 
 interface ReviewRowProps {
@@ -22,6 +23,7 @@ interface ReviewRowProps {
         fbCaption?: string;
         fbHashtags?: string[];
     }) => void;
+    onDelete?: (dateId: string) => void;
 }
 
 const DEFAULT_AI: Omit<PostDayAI, 'meta'> & { meta?: PostDayAI['meta'] } = {
@@ -29,7 +31,7 @@ const DEFAULT_AI: Omit<PostDayAI, 'meta'> & { meta?: PostDayAI['meta'] } = {
     fb: { caption: "", hashtags: [] },
 };
 
-export default function ReviewRow({ post, isSelected, isGenerating, onSelect, onRegenerate }: ReviewRowProps) {
+export default function ReviewRow({ post, isSelected, isGenerating, onSelect, onRegenerate, onDelete }: ReviewRowProps) {
     const { user, workspaceId } = useAuth();
     const [localAi, setLocalAi] = useState<typeof DEFAULT_AI>(() => {
         if (post.ai) {
@@ -43,6 +45,14 @@ export default function ReviewRow({ post, isSelected, isGenerating, onSelect, on
     });
     const [isSaving, setIsSaving] = useState(false);
     const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+
+    // Date change state (matching TableRow/Input UX)
+    const [showOverwriteModal, setShowOverwriteModal] = useState(false);
+    const [pendingNewDate, setPendingNewDate] = useState<string | null>(null);
+    const [dateError, setDateError] = useState<string | null>(null);
+
+    // Delete confirmation state
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
 
     // Live check if date is in the past
     const isPast = isPastOrTodayInDenver(post.date);
@@ -101,6 +111,51 @@ export default function ReviewRow({ post, isSelected, isGenerating, onSelect, on
         return text.split(/\s+/).filter(word => word !== "").length;
     };
 
+    // Date change handler (matching TableRow/Input UX)
+    const handleDateChange = async (newDate: string) => {
+        if (newDate === post.date || !user || !workspaceId) return;
+
+        setIsSaving(true);
+        setDateError(null);
+
+        const result = await movePostDay(workspaceId, post.date, newDate, { overwrite: false });
+
+        if (result.needsConfirmOverwrite) {
+            setPendingNewDate(newDate);
+            setShowOverwriteModal(true);
+            setIsSaving(false);
+            return;
+        }
+
+        if (!result.ok) {
+            setDateError(result.error || "Failed to change date.");
+        }
+
+        setIsSaving(false);
+    };
+
+    const handleOverwriteConfirm = async () => {
+        if (!pendingNewDate || !workspaceId) return;
+
+        setShowOverwriteModal(false);
+        setIsSaving(true);
+        setDateError(null);
+
+        const result = await movePostDay(workspaceId, post.date, pendingNewDate, { overwrite: true });
+
+        if (!result.ok) {
+            setDateError(result.error || "Failed to change date.");
+        }
+
+        setPendingNewDate(null);
+        setIsSaving(false);
+    };
+
+    const handleOverwriteCancel = () => {
+        setShowOverwriteModal(false);
+        setPendingNewDate(null);
+    };
+
     return (
         <tr className={`transition-colors ${isSelected ? 'bg-teal-50/50' : 'hover:bg-gray-50/50'}`}>
             {/* Checkbox */}
@@ -116,16 +171,12 @@ export default function ReviewRow({ post, isSelected, isGenerating, onSelect, on
             {/* Date */}
             <td className="px-4 py-4 align-top">
                 <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm font-medium text-gray-900">{post.date}</span>
-                        <Link
-                            href={`/input?date=${post.date}`}
-                            className="text-gray-400 hover:text-teal-600 transition-colors"
-                            title="Edit in Input"
-                        >
-                            <Pencil size={12} />
-                        </Link>
-                    </div>
+                    <input
+                        type="date"
+                        value={post.date}
+                        onChange={(e) => handleDateChange(e.target.value)}
+                        className="font-mono text-sm font-medium text-gray-900 border-none bg-transparent focus:ring-0 p-0 cursor-pointer w-32"
+                    />
                     <div className="flex flex-wrap gap-1">
                         {isPast && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-red-100 text-red-700">
@@ -143,7 +194,24 @@ export default function ReviewRow({ post, isSelected, isGenerating, onSelect, on
                             </span>
                         )}
                     </div>
+                    {dateError && (
+                        <span className="text-[10px] text-red-600 flex items-center gap-1">
+                            <AlertCircle size={10} />
+                            {dateError}
+                        </span>
+                    )}
                 </div>
+
+                {/* Overwrite confirmation modal */}
+                <ConfirmModal
+                    open={showOverwriteModal}
+                    title="Overwrite Existing Post?"
+                    description={`A post already exists for ${pendingNewDate}. Do you want to replace it with this one?`}
+                    confirmText="Overwrite"
+                    cancelText="Cancel"
+                    onConfirm={handleOverwriteConfirm}
+                    onCancel={handleOverwriteCancel}
+                />
             </td>
 
             {/* Image */}
@@ -270,7 +338,33 @@ export default function ReviewRow({ post, isSelected, isGenerating, onSelect, on
                             Regenerate
                         </button>
                     )}
+                    {onDelete && (
+                        <button
+                            onClick={() => setShowDeleteModal(true)}
+                            disabled={isSaving || isGenerating}
+                            className="inline-flex items-center gap-1 text-[10px] font-medium text-gray-400 hover:text-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Delete this post"
+                        >
+                            <Trash2 size={12} />
+                            Delete
+                        </button>
+                    )}
                 </div>
+
+                {/* Delete confirmation modal */}
+                <ConfirmModal
+                    open={showDeleteModal}
+                    title="Delete this post?"
+                    description={`This will remove the post for ${post.date} from the schedule. This cannot be undone.`}
+                    confirmText="Delete"
+                    cancelText="Cancel"
+                    confirmVariant="danger"
+                    onConfirm={() => {
+                        setShowDeleteModal(false);
+                        onDelete?.(post.date);
+                    }}
+                    onCancel={() => setShowDeleteModal(false)}
+                />
             </td>
         </tr>
     );

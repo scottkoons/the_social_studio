@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useRef } from "react";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, setDoc, deleteDoc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { isPastOrTodayInDenver, stripUndefined } from "@/lib/utils";
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { isPastOrTodayInDenver } from "@/lib/utils";
+import { movePostDay } from "@/lib/postDayMove";
 import { PostDay } from "@/lib/types";
 import ImageUpload from "./ImageUpload";
 import StatusPill from "./ui/StatusPill";
-import { AlertCircle, Loader2, X } from "lucide-react";
+import ConfirmModal from "./ui/ConfirmModal";
+import { AlertCircle, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 interface TableRowProps {
@@ -75,59 +77,40 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
     const handleDateChange = async (newDate: string) => {
         if (newDate === post.date || !user || !workspaceId) return;
 
-        // Check if target date already exists
-        if (allPostDates.includes(newDate)) {
-            // Show overwrite confirmation modal
+        setIsSaving(true);
+        setError(null);
+
+        const result = await movePostDay(workspaceId, post.date, newDate, { overwrite: false });
+
+        if (result.needsConfirmOverwrite) {
             setPendingNewDate(newDate);
             setShowOverwriteModal(true);
+            setIsSaving(false);
             return;
         }
 
-        await performDateChange(newDate, false);
-    };
-
-    const performDateChange = async (newDate: string, overwrite: boolean) => {
-        if (!user || !workspaceId) return;
-
-        setIsSaving(true);
-        try {
-            const oldDocRef = doc(db, "workspaces", workspaceId, "post_days", post.date);
-            const newDocRef = doc(db, "workspaces", workspaceId, "post_days", newDate);
-
-            // If not overwriting, check if destination exists
-            if (!overwrite) {
-                const newDocSnap = await getDoc(newDocRef);
-                if (newDocSnap.exists()) {
-                    setPendingNewDate(newDate);
-                    setShowOverwriteModal(true);
-                    setIsSaving(false);
-                    return;
-                }
-            }
-
-            // Copy data to new doc (preserving imageAssetId) - stripUndefined to avoid Firestore errors
-            await setDoc(newDocRef, stripUndefined({
-                ...post,
-                date: newDate,
-                updatedAt: serverTimestamp(),
-            }));
-
-            // Delete old doc
-            await deleteDoc(oldDocRef);
-
-        } catch (err) {
-            console.error("Date change error:", err);
-            setError("Failed to change date.");
-        } finally {
-            setIsSaving(false);
+        if (!result.ok) {
+            setError(result.error || "Failed to change date.");
         }
+
+        setIsSaving(false);
     };
 
     const handleOverwriteConfirm = async () => {
-        if (!pendingNewDate) return;
+        if (!pendingNewDate || !workspaceId) return;
+
         setShowOverwriteModal(false);
-        await performDateChange(pendingNewDate, true);
+        setIsSaving(true);
+        setError(null);
+
+        const result = await movePostDay(workspaceId, post.date, pendingNewDate, { overwrite: true });
+
+        if (!result.ok) {
+            setError(result.error || "Failed to change date.");
+        }
+
         setPendingNewDate(null);
+        setIsSaving(false);
     };
 
     const handleOverwriteCancel = () => {
@@ -210,52 +193,15 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
         </tr>
 
         {/* Overwrite Confirmation Modal */}
-        {showOverwriteModal && pendingNewDate && (
-            <tr>
-                <td colSpan={5} className="p-0">
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                        <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
-                            {/* Header */}
-                            <div className="bg-gray-50 px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-                                <h3 className="font-semibold text-gray-900">Date already exists</h3>
-                                <button
-                                    onClick={handleOverwriteCancel}
-                                    className="text-gray-400 hover:text-gray-600 transition-colors"
-                                >
-                                    <X size={20} />
-                                </button>
-                            </div>
-
-                            {/* Content */}
-                            <div className="px-5 py-5">
-                                <p className="text-gray-600">
-                                    A post already exists for <span className="font-semibold text-gray-900 font-mono">{pendingNewDate}</span>.
-                                </p>
-                                <p className="text-sm text-gray-500 mt-2">
-                                    Do you want to overwrite it? This will replace the existing post with this one.
-                                </p>
-                            </div>
-
-                            {/* Actions */}
-                            <div className="px-5 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
-                                <button
-                                    onClick={handleOverwriteCancel}
-                                    className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleOverwriteConfirm}
-                                    className="px-4 py-2 text-sm font-medium bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors"
-                                >
-                                    Overwrite
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </td>
-            </tr>
-        )}
+        <ConfirmModal
+            open={showOverwriteModal}
+            title="Overwrite Existing Post?"
+            description={`A post already exists for ${pendingNewDate}. Do you want to replace it with this one?`}
+            confirmText="Overwrite"
+            cancelText="Cancel"
+            onConfirm={handleOverwriteConfirm}
+            onCancel={handleOverwriteCancel}
+        />
         </>
     );
 }

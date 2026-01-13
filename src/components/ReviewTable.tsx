@@ -18,6 +18,7 @@ interface ReviewTableProps {
         fbCaption?: string;
         fbHashtags?: string[];
     }) => void;
+    onDelete?: (dateId: string) => void;
 }
 
 export default function ReviewTable({
@@ -26,7 +27,8 @@ export default function ReviewTable({
     generatingIds = new Set(),
     onSelectRow,
     onSelectAll,
-    onRegenerate
+    onRegenerate,
+    onDelete
 }: ReviewTableProps) {
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
@@ -99,6 +101,7 @@ export default function ReviewTable({
                             isGenerating={generatingIds.has(post.date)}
                             onSelect={onSelectRow}
                             onRegenerate={onRegenerate}
+                            onDelete={onDelete}
                         />
                     ))}
                 </tbody>

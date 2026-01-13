@@ -368,6 +368,7 @@ export default function CalendarEditModal({
                                         alt="Post image"
                                         fill
                                         className="object-contain"
+                                        sizes="(max-width: 768px) 100vw, 400px"
                                     />
                                 </div>
                                 <div className="flex gap-2 mt-2">

@@ -4,14 +4,16 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { db, storage } from "@/lib/firebase";
-import { collection, query, where, onSnapshot, documentId, doc, getDoc, setDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, onSnapshot, documentId, doc, getDoc } from "firebase/firestore";
 import { ref, getDownloadURL } from "firebase/storage";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCard from "@/components/ui/DashboardCard";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { format, startOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, isSameMonth } from "date-fns";
 import { PostDay } from "@/lib/types";
-import { getTodayInDenver, stripUndefined } from "@/lib/utils";
+import { getTodayInDenver } from "@/lib/utils";
+import { movePostDay } from "@/lib/postDayMove";
 import { useWorkspaceUiSettings } from "@/hooks/useWorkspaceUiSettings";
 import Image from "next/image";
 import CalendarEditModal from "@/components/CalendarEditModal";
@@ -88,45 +90,31 @@ export default function CalendarPage() {
     const goToNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
     const goToToday = () => setCurrentMonth(new Date());
 
-    // Move post from one date to another in Firestore
+    // Move post from one date to another using shared helper
     const movePost = useCallback(async (sourceDate: string, targetDate: string, overwrite: boolean = false) => {
         if (!workspaceId || sourceDate === targetDate) return;
 
         const sourcePost = posts.get(sourceDate);
         if (!sourcePost) return;
 
-        const targetPost = posts.get(targetDate);
+        setIsMoving(true);
+        const result = await movePostDay(workspaceId, sourceDate, targetDate, { overwrite });
 
-        // If target has a post and we're not overwriting, show confirmation
-        if (targetPost && !overwrite) {
+        if (result.needsConfirmOverwrite) {
+            // Show confirmation modal
             setPendingDrop({ source: { sourceDate, post: sourcePost }, targetDate });
             setShowOverwriteModal(true);
+            setIsMoving(false);
             return;
         }
 
-        setIsMoving(true);
-        try {
-            const sourceDocRef = doc(db, "workspaces", workspaceId, "post_days", sourceDate);
-            const targetDocRef = doc(db, "workspaces", workspaceId, "post_days", targetDate);
-
-            // If overwriting, the target doc will be replaced
-            // Copy source post data to target date - stripUndefined to avoid Firestore errors
-            await setDoc(targetDocRef, stripUndefined({
-                ...sourcePost,
-                date: targetDate,
-                updatedAt: serverTimestamp(),
-            }));
-
-            // Delete source post
-            await deleteDoc(sourceDocRef);
-
-        } catch (err) {
-            console.error("Move post error:", err);
-        } finally {
-            setIsMoving(false);
-            setDraggedPost(null);
-            setDropTarget(null);
+        if (!result.ok) {
+            console.error("Move post error:", result.error);
         }
+
+        setIsMoving(false);
+        setDraggedPost(null);
+        setDropTarget(null);
     }, [workspaceId, posts]);
 
     // Handle overwrite confirmation (for both drag-drop and edit modal)
@@ -225,32 +213,23 @@ export default function CalendarPage() {
         if (!editDateConflict || !workspaceId) return;
 
         setIsMoving(true);
-        try {
-            const sourcePost = posts.get(editDateConflict.sourceDate);
-            if (!sourcePost) return;
+        const result = await movePostDay(
+            workspaceId,
+            editDateConflict.sourceDate,
+            editDateConflict.targetDate,
+            { overwrite: true }
+        );
 
-            const sourceDocRef = doc(db, "workspaces", workspaceId, "post_days", editDateConflict.sourceDate);
-            const targetDocRef = doc(db, "workspaces", workspaceId, "post_days", editDateConflict.targetDate);
-
-            // Move post to target date (overwrites existing) - stripUndefined to avoid Firestore errors
-            await setDoc(targetDocRef, stripUndefined({
-                ...sourcePost,
-                date: editDateConflict.targetDate,
-                updatedAt: serverTimestamp(),
-            }));
-
-            // Delete source doc
-            await deleteDoc(sourceDocRef);
-
+        if (!result.ok) {
+            console.error("Overwrite error:", result.error);
+        } else {
             setEditModalOpen(false);
             setEditingPost(null);
-        } catch (err) {
-            console.error("Overwrite error:", err);
-        } finally {
-            setIsMoving(false);
-            setShowOverwriteModal(false);
-            setEditDateConflict(null);
         }
+
+        setIsMoving(false);
+        setShowOverwriteModal(false);
+        setEditDateConflict(null);
     };
 
     const handleCloseEditModal = useCallback(() => {
@@ -404,50 +383,15 @@ export default function CalendarPage() {
             )}
 
             {/* Overwrite Confirmation Modal */}
-            {showOverwriteModal && (pendingDrop || editDateConflict) && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
-                        {/* Header */}
-                        <div className="bg-gray-50 px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-                            <h3 className="font-semibold text-gray-900">Date already has a post</h3>
-                            <button
-                                onClick={handleOverwriteCancel}
-                                className="text-gray-400 hover:text-gray-600 transition-colors"
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        {/* Content */}
-                        <div className="px-5 py-5">
-                            <p className="text-gray-600">
-                                A post already exists on <span className="font-semibold text-gray-900 font-mono">{pendingDrop?.targetDate || editDateConflict?.targetDate}</span>.
-                            </p>
-                            <p className="text-sm text-gray-500 mt-2">
-                                Do you want to overwrite it? This will replace the existing post with the one you're moving.
-                            </p>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="px-5 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
-                            <button
-                                onClick={handleOverwriteCancel}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
-                                disabled={isMoving}
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleOverwriteConfirm}
-                                disabled={isMoving}
-                                className="px-4 py-2 text-sm font-medium bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors disabled:opacity-50"
-                            >
-                                {isMoving ? "Moving..." : "Overwrite"}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <ConfirmModal
+                open={showOverwriteModal && !!(pendingDrop || editDateConflict)}
+                title="Date already has a post"
+                description={`A post already exists on ${pendingDrop?.targetDate || editDateConflict?.targetDate}. Do you want to overwrite it? This will replace the existing post with the one you're moving.`}
+                confirmText={isMoving ? "Moving..." : "Overwrite"}
+                cancelText="Cancel"
+                onConfirm={handleOverwriteConfirm}
+                onCancel={handleOverwriteCancel}
+            />
         </div>
     );
 }

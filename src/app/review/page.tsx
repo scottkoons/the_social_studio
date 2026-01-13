@@ -3,16 +3,17 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db, functions } from "@/lib/firebase";
-import { collection, query, onSnapshot, orderBy, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, onSnapshot, orderBy, doc, deleteDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import ReviewTable from "@/components/ReviewTable";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCard from "@/components/ui/DashboardCard";
 import Toast from "@/components/ui/Toast";
+import BufferExportModal from "@/components/BufferExportModal";
 import { PostDay } from "@/lib/types";
-import { Play, Send, CheckCircle2 } from "lucide-react";
-import { sendToBufferStub } from "@/lib/buffer-stubs";
+import { Play, Download } from "lucide-react";
 import { useHidePastUnsent } from "@/hooks/useHidePastUnsent";
+import { isPastOrTodayInDenver } from "@/lib/utils";
 
 const CONCURRENCY_LIMIT = 3;
 
@@ -30,7 +31,8 @@ export default function ReviewPage() {
     const [toast, setToast] = useState<{ type: 'success' | 'warn' | 'error', message: string } | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
-    const [isSending, setIsSending] = useState(false);
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [imageUrls, setImageUrls] = useState<Map<string, string>>(new Map());
 
     // Use shared hook for filtering past unsent posts (controlled from Settings)
     const { filteredPosts, hidePastUnsent } = useHidePastUnsent(posts);
@@ -62,6 +64,25 @@ export default function ReviewPage() {
 
         return () => unsubscribe();
     }, [user, workspaceId]);
+
+    // Fetch image URLs from assets collection for Buffer export
+    useEffect(() => {
+        if (!workspaceId) return;
+
+        const assetsRef = collection(db, "workspaces", workspaceId, "assets");
+        const unsubscribe = onSnapshot(assetsRef, (snapshot) => {
+            const urls = new Map<string, string>();
+            snapshot.docs.forEach((doc) => {
+                const data = doc.data();
+                if (data.downloadUrl) {
+                    urls.set(doc.id, data.downloadUrl);
+                }
+            });
+            setImageUrls(urls);
+        });
+
+        return () => unsubscribe();
+    }, [workspaceId]);
 
     const showToast = useCallback((type: 'success' | 'warn' | 'error', message: string) => {
         setToast({ type, message });
@@ -134,6 +155,30 @@ export default function ReviewPage() {
         }
     }, [user, workspaceId, showToast]);
 
+    const handleDelete = useCallback(async (dateId: string) => {
+        if (!workspaceId) return;
+
+        try {
+            const docRef = doc(db, "workspaces", workspaceId, "post_days", dateId);
+            await deleteDoc(docRef);
+
+            // Remove from selection state if selected
+            setSelectedIds(prev => {
+                if (prev.has(dateId)) {
+                    const next = new Set(prev);
+                    next.delete(dateId);
+                    return next;
+                }
+                return prev;
+            });
+
+            showToast('success', `Deleted post for ${dateId}`);
+        } catch (err) {
+            console.error("Delete error:", err);
+            showToast('error', `Failed to delete post for ${dateId}`);
+        }
+    }, [workspaceId, showToast]);
+
     const handleGenerateBatch = async () => {
         if (!user || !workspaceId) return;
 
@@ -146,33 +191,83 @@ export default function ReviewPage() {
         setIsGenerating(true);
 
         const generatePostCopy = httpsCallable<
-            { workspaceId: string; dateId: string; regenerate: boolean },
+            {
+                workspaceId: string;
+                dateId: string;
+                regenerate: boolean;
+                previousOutputs?: {
+                    igCaption?: string;
+                    igHashtags?: string[];
+                    fbCaption?: string;
+                    fbHashtags?: string[];
+                };
+                requestId?: string;
+            },
             GeneratePostCopyResponse
         >(functions, "generatePostCopy");
 
-        let generated = 0;
-        let skipped = 0;
+        // Track counts
+        let generated = 0;      // New posts (had no AI before)
+        let regenerated = 0;    // Existing posts (had AI before)
+        let skippedMissingImage = 0;
+        let skippedPastUnsent = 0;
         let failed = 0;
 
+        // Filter out posts that should be skipped and categorize the rest
+        const toProcess: { post: PostDay; hadExistingAi: boolean }[] = [];
+
+        for (const post of targets) {
+            // Skip rule 1: Missing image
+            if (!post.imageAssetId) {
+                skippedMissingImage++;
+                continue;
+            }
+
+            // Skip rule 2: Past date and not sent
+            const isPast = isPastOrTodayInDenver(post.date);
+            if (isPast && post.status !== "sent") {
+                skippedPastUnsent++;
+                continue;
+            }
+
+            // Check if post already has AI content
+            const hadExistingAi = !!(post.ai?.ig?.caption || post.ai?.fb?.caption);
+            toProcess.push({ post, hadExistingAi });
+        }
+
         // Process in batches with concurrency limit
-        const queue = [...targets];
+        const queue = [...toProcess];
         const inFlight: Promise<void>[] = [];
 
-        const processOne = async (post: PostDay) => {
+        const processOne = async (item: { post: PostDay; hadExistingAi: boolean }) => {
+            const { post, hadExistingAi } = item;
             setGeneratingIds(prev => new Set(prev).add(post.date));
 
             try {
+                // Always regenerate - pass previous outputs if they exist
+                const previousOutputs = hadExistingAi ? {
+                    igCaption: post.ai?.ig?.caption,
+                    igHashtags: post.ai?.ig?.hashtags,
+                    fbCaption: post.ai?.fb?.caption,
+                    fbHashtags: post.ai?.fb?.hashtags,
+                } : undefined;
+
                 const result = await generatePostCopy({
                     workspaceId,
                     dateId: post.date,
-                    regenerate: false,
+                    regenerate: true, // Always regenerate to overwrite existing
+                    previousOutputs,
+                    requestId: crypto.randomUUID(),
                 });
 
                 if (result.data.status === "generated") {
-                    generated++;
-                } else if (result.data.status === "already_generated") {
-                    skipped++;
+                    if (hadExistingAi) {
+                        regenerated++;
+                    } else {
+                        generated++;
+                    }
                 }
+                // Note: "already_generated" should not happen with regenerate=true
             } catch (err) {
                 console.error(`Generate error for ${post.date}:`, err);
                 failed++;
@@ -188,8 +283,8 @@ export default function ReviewPage() {
         while (queue.length > 0 || inFlight.length > 0) {
             // Fill up to concurrency limit
             while (queue.length > 0 && inFlight.length < CONCURRENCY_LIMIT) {
-                const post = queue.shift()!;
-                const promise = processOne(post).then(() => {
+                const item = queue.shift()!;
+                const promise = processOne(item).then(() => {
                     const idx = inFlight.indexOf(promise);
                     if (idx > -1) inFlight.splice(idx, 1);
                 });
@@ -204,77 +299,53 @@ export default function ReviewPage() {
 
         setIsGenerating(false);
 
-        // Show summary toast
-        if (failed > 0) {
-            showToast('warn', `${generated} generated, ${skipped} skipped, ${failed} failed.`);
-        } else if (skipped > 0) {
-            showToast('success', `${generated} generated, ${skipped} already had content.`);
-        } else {
-            showToast('success', `Generated content for ${generated} post${generated !== 1 ? 's' : ''}.`);
-        }
-    };
+        // Build summary toast
+        const totalSkipped = skippedMissingImage + skippedPastUnsent;
+        const totalProcessed = generated + regenerated;
 
-    // Check if a post has a valid image (required for Buffer)
-    const hasValidImage = (post: PostDay): boolean => {
-        return !!post.imageAssetId;
-    };
-
-    const handleSendToBuffer = async (onlySelected: boolean) => {
-        if (!user || !workspaceId) return;
-        const targets = onlySelected
-            ? posts.filter(p => selectedIds.has(p.date))
-            : posts;
-
-        if (targets.length === 0) return;
-
-        // Check if ALL selected posts are missing images
-        const postsWithImages = targets.filter(p => hasValidImage(p));
-        if (postsWithImages.length === 0) {
-            showToast('warn', 'No posts were sent because images are missing.');
-            return;
-        }
-
-        setIsSending(true);
-        let successCount = 0;
-        let skippedMissingImage = 0;
-        let skippedPastDate = 0;
-
-        for (const post of targets) {
-            // Hard rule: skip posts without images
-            if (!hasValidImage(post)) {
-                skippedMissingImage++;
-                continue;
-            }
-
-            const result = await sendToBufferStub(post);
-            if (result.success) {
-                const docRef = doc(db, "workspaces", workspaceId, "post_days", post.date);
-                await updateDoc(docRef, {
-                    status: "sent",
-                    buffer: { pushedAt: result.pushedAt },
-                    updatedAt: serverTimestamp()
-                });
-                successCount++;
-            } else {
-                // Past date or other failure from stub
-                skippedPastDate++;
-            }
-        }
-
-        setIsSending(false);
-
-        // Build toast summary
-        const parts: string[] = [];
-        if (successCount > 0) parts.push(`Sent ${successCount}`);
-        if (skippedMissingImage > 0) parts.push(`Skipped ${skippedMissingImage} (missing image)`);
-        if (skippedPastDate > 0) parts.push(`Skipped ${skippedPastDate} (past date)`);
-
-        if (skippedMissingImage > 0 || skippedPastDate > 0) {
+        if (totalProcessed === 0 && totalSkipped > 0) {
+            // Nothing processed, only skips
+            const skipReasons: string[] = [];
+            if (skippedMissingImage > 0) skipReasons.push(`${skippedMissingImage} missing image`);
+            if (skippedPastUnsent > 0) skipReasons.push(`${skippedPastUnsent} past unsent`);
+            showToast('warn', `Skipped all: ${skipReasons.join(', ')}.`);
+        } else if (failed > 0 || totalSkipped > 0) {
+            // Mixed results
+            const parts: string[] = [];
+            if (generated > 0) parts.push(`Generated ${generated}`);
+            if (regenerated > 0) parts.push(`Regenerated ${regenerated}`);
+            if (skippedMissingImage > 0) parts.push(`Skipped ${skippedMissingImage} (missing image)`);
+            if (skippedPastUnsent > 0) parts.push(`Skipped ${skippedPastUnsent} (past unsent)`);
+            if (failed > 0) parts.push(`Failed ${failed}`);
             showToast('warn', parts.join(' • '));
+        } else if (generated > 0 && regenerated > 0) {
+            // Both generated and regenerated
+            showToast('success', `Generated ${generated}, regenerated ${regenerated}.`);
+        } else if (regenerated > 0) {
+            // Only regenerated
+            showToast('success', `Regenerated ${regenerated} post${regenerated !== 1 ? 's' : ''}.`);
         } else {
-            showToast('success', `Successfully sent ${successCount} post${successCount !== 1 ? 's' : ''} to Buffer.`);
+            // Only generated
+            showToast('success', `Generated ${generated} post${generated !== 1 ? 's' : ''}.`);
         }
     };
+
+    // Handle export completion
+    const handleExportComplete = useCallback((summary: { exported: number; skipped: number }) => {
+        if (summary.skipped > 0) {
+            showToast('warn', `Exported ${summary.exported} posts. Skipped ${summary.skipped} (missing image or caption).`);
+        } else {
+            showToast('success', `Exported ${summary.exported} post${summary.exported !== 1 ? 's' : ''} for Buffer.`);
+        }
+    }, [showToast]);
+
+    // Get posts for export (selected or all)
+    const getPostsForExport = useCallback(() => {
+        if (selectedIds.size > 0) {
+            return filteredPosts.filter(p => selectedIds.has(p.date));
+        }
+        return filteredPosts;
+    }, [selectedIds, filteredPosts]);
 
     // Show loading while workspace is being resolved
     if (workspaceLoading || !workspaceId) {
@@ -316,30 +387,12 @@ export default function ReviewPage() {
                         </button>
 
                         <button
-                            onClick={() => handleSendToBuffer(true)}
-                            disabled={selectedIds.size === 0 || isSending}
+                            onClick={() => setShowExportModal(true)}
+                            disabled={filteredPosts.length === 0}
                             className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            <Send size={16} />
-                            Send Selected
-                        </button>
-
-                        <button
-                            onClick={() => handleSendToBuffer(false)}
-                            disabled={isSending || posts.length === 0}
-                            className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isSending ? (
-                                <>
-                                    <span className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white" />
-                                    Sending...
-                                </>
-                            ) : (
-                                <>
-                                    <CheckCircle2 size={16} />
-                                    Send All
-                                </>
-                            )}
+                            <Download size={16} />
+                            Export for Buffer
                         </button>
                     </>
                 }
@@ -364,6 +417,7 @@ export default function ReviewPage() {
                         onSelectRow={onSelectRow}
                         onSelectAll={onSelectAll}
                         onRegenerate={handleRegenerateSingle}
+                        onDelete={handleDelete}
                     />
                 )}
             </DashboardCard>
@@ -376,6 +430,15 @@ export default function ReviewPage() {
                     onClose={() => setToast(null)}
                 />
             )}
+
+            {/* Buffer Export Modal */}
+            <BufferExportModal
+                open={showExportModal}
+                posts={getPostsForExport()}
+                imageUrls={imageUrls}
+                onClose={() => setShowExportModal(false)}
+                onExportComplete={handleExportComplete}
+            />
         </div>
     );
 }

@@ -30,6 +30,7 @@ export default function Navbar() {
                                 alt="The Social Studio Logo"
                                 fill
                                 className="object-contain"
+                                sizes="32px"
                             />
                         </div>
                         <span className="font-bold text-xl text-navy-900 hidden sm:block">The Social Studio</span>

@@ -5,12 +5,12 @@ import { useAuth } from "@/context/AuthContext";
 import { useWorkspaceUiSettings } from "@/hooks/useWorkspaceUiSettings";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCard from "@/components/ui/DashboardCard";
-import { Check, EyeOff, Sparkles, Hash } from "lucide-react";
-import { HashtagStyle } from "@/lib/types";
+import { Check, EyeOff, Sparkles, Hash, Smile } from "lucide-react";
+import { HashtagStyle, EmojiStyle } from "@/lib/types";
 
 export default function SettingsPage() {
     const { workspaceId, workspaceLoading } = useAuth();
-    const { settings, aiSettings, loading, setHidePastUnsent, setBrandVoice, setHashtagStyle } = useWorkspaceUiSettings();
+    const { settings, aiSettings, loading, setHidePastUnsent, setBrandVoice, setHashtagStyle, setEmojiStyle } = useWorkspaceUiSettings();
     const [showSaved, setShowSaved] = useState<string | null>(null);
     const [localBrandVoice, setLocalBrandVoice] = useState(aiSettings.brandVoice);
     const debounceTimer = useRef<NodeJS.Timeout | null>(null);
@@ -39,6 +39,11 @@ export default function SettingsPage() {
     const handleHashtagStyleChange = async (style: HashtagStyle) => {
         await setHashtagStyle(style);
         showSavedIndicator("hashtagStyle");
+    };
+
+    const handleEmojiStyleChange = async (style: EmojiStyle) => {
+        await setEmojiStyle(style);
+        showSavedIndicator("emojiStyle");
     };
 
     const showSavedIndicator = (key: string) => {
@@ -180,7 +185,7 @@ export default function SettingsPage() {
                                         value={localBrandVoice}
                                         onChange={(e) => handleBrandVoiceChange(e.target.value)}
                                         placeholder="E.g., Friendly and casual, with a touch of humor. We love using emojis and keeping things upbeat. Our audience is young professionals who appreciate authenticity."
-                                        className="w-full text-sm border border-gray-200 bg-white rounded-lg p-3 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 min-h-[100px] resize-y"
+                                        className="w-full text-sm text-gray-900 placeholder:text-gray-400 border border-gray-200 bg-white rounded-lg p-3 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 min-h-[100px] resize-y"
                                     />
                                 </div>
                             </div>
@@ -223,6 +228,55 @@ export default function SettingsPage() {
                                                 `}
                                             >
                                                 <div className={`text-sm font-medium ${aiSettings.hashtagStyle === option.value ? 'text-teal-700' : 'text-gray-900'}`}>
+                                                    {option.label}
+                                                </div>
+                                                <div className="text-xs text-gray-500 mt-0.5">
+                                                    {option.desc}
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Emoji Style */}
+                            <div className="flex items-start gap-3">
+                                <div className="mt-0.5 p-2 bg-amber-100 rounded-lg">
+                                    <Smile size={18} className="text-amber-600" />
+                                </div>
+                                <div className="flex-1">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label className="text-sm font-medium text-gray-900">
+                                            Emoji Density
+                                        </label>
+                                        {showSaved === "emojiStyle" && (
+                                            <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
+                                                <Check size={14} />
+                                                Saved
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-sm text-gray-500 mb-3">
+                                        Control how many emojis AI includes in your captions.
+                                    </p>
+                                    <div className="flex gap-2">
+                                        {[
+                                            { value: "none", label: "None", desc: "No emojis" },
+                                            { value: "light", label: "Light", desc: "A few emojis" },
+                                            { value: "medium", label: "Medium", desc: "Moderate emojis" },
+                                        ].map((option) => (
+                                            <button
+                                                key={option.value}
+                                                onClick={() => handleEmojiStyleChange(option.value as EmojiStyle)}
+                                                className={`
+                                                    flex-1 px-4 py-3 rounded-lg border-2 transition-all text-left
+                                                    ${aiSettings.emojiStyle === option.value
+                                                        ? 'border-teal-500 bg-teal-50'
+                                                        : 'border-gray-200 hover:border-gray-300 bg-white'
+                                                    }
+                                                `}
+                                            >
+                                                <div className={`text-sm font-medium ${aiSettings.emojiStyle === option.value ? 'text-teal-700' : 'text-gray-900'}`}>
                                                     {option.label}
                                                 </div>
                                                 <div className="text-xs text-gray-500 mt-0.5">

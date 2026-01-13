@@ -37,9 +37,11 @@ interface ImportImageRequest {
 
 interface ImportImageResponse {
   success: boolean;
+  skipped?: boolean;
   assetId?: string;
   downloadUrl?: string;
   error?: string;
+  reason?: string;
 }
 
 function getFirebaseDownloadUrl(
@@ -106,6 +108,7 @@ export const importImageFromUrl = onCall<ImportImageRequest>(
       throw new HttpsError("permission-denied", "Insufficient permissions to import images");
     }
 
+    // Fetch the image - return skip response instead of throwing for expected failures
     let response: Response;
     try {
       response = await fetch(imageUrl, {
@@ -115,40 +118,55 @@ export const importImageFromUrl = onCall<ImportImageRequest>(
         },
       });
     } catch (error) {
-      throw new HttpsError(
-        "failed-precondition",
-        `Failed to fetch image from "${imageUrl}": ${error instanceof Error ? error.message : "Network error"}`
-      );
+      // Network error - skip this image
+      return {
+        success: false,
+        skipped: true,
+        reason: `Could not fetch URL: ${error instanceof Error ? error.message : "Network error"}`,
+      };
     }
 
     if (!response.ok) {
-      throw new HttpsError(
-        "failed-precondition",
-        `Failed to fetch image: Server returned HTTP ${response.status} ${response.statusText}`
-      );
+      // HTTP error - skip this image
+      return {
+        success: false,
+        skipped: true,
+        reason: `Server returned HTTP ${response.status} ${response.statusText}`,
+      };
     }
 
+    // Validate content-type
     const contentType = response.headers.get("content-type")?.split(";")[0].trim();
     if (!contentType) {
-      throw new HttpsError(
-        "invalid-argument",
-        "Remote server did not return a content-type header. Cannot verify this is an image."
-      );
+      return {
+        success: false,
+        skipped: true,
+        reason: "No content-type header. Cannot verify this is an image.",
+      };
     }
     if (!ALLOWED_CONTENT_TYPES.includes(contentType)) {
-      throw new HttpsError(
-        "invalid-argument",
-        `Invalid content type "${contentType}". Allowed types: ${ALLOWED_CONTENT_TYPES.join(", ")}`
-      );
+      // Common case: URL returned HTML or other non-image content
+      let reason = `Not an image (${contentType})`;
+      if (contentType === "text/html") {
+        reason = "URL returned an HTML page, not an image";
+      } else if (contentType === "application/json") {
+        reason = "URL returned JSON, not an image";
+      }
+      return {
+        success: false,
+        skipped: true,
+        reason,
+      };
     }
 
     const contentLength = response.headers.get("content-length");
     if (contentLength && parseInt(contentLength, 10) > MAX_SIZE_BYTES) {
       const sizeMB = (parseInt(contentLength, 10) / (1024 * 1024)).toFixed(2);
-      throw new HttpsError(
-        "invalid-argument",
-        `Image too large: ${sizeMB}MB. Maximum allowed: 10MB`
-      );
+      return {
+        success: false,
+        skipped: true,
+        reason: `Image too large: ${sizeMB}MB (max 10MB)`,
+      };
     }
 
     let buffer: Buffer;
@@ -156,25 +174,28 @@ export const importImageFromUrl = onCall<ImportImageRequest>(
       const arrayBuffer = await response.arrayBuffer();
       buffer = Buffer.from(arrayBuffer);
     } catch (error) {
-      throw new HttpsError(
-        "failed-precondition",
-        `Failed to download image data: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
+      return {
+        success: false,
+        skipped: true,
+        reason: `Failed to download: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
     }
 
     if (buffer.length === 0) {
-      throw new HttpsError(
-        "invalid-argument",
-        "Downloaded image is empty (0 bytes)"
-      );
+      return {
+        success: false,
+        skipped: true,
+        reason: "Downloaded file is empty (0 bytes)",
+      };
     }
 
     if (buffer.length > MAX_SIZE_BYTES) {
       const sizeMB = (buffer.length / (1024 * 1024)).toFixed(2);
-      throw new HttpsError(
-        "invalid-argument",
-        `Image too large: ${sizeMB}MB. Maximum allowed: 10MB`
-      );
+      return {
+        success: false,
+        skipped: true,
+        reason: `Image too large: ${sizeMB}MB (max 10MB)`,
+      };
     }
 
     const hash = createHash("sha256")
@@ -298,6 +319,181 @@ function appendGlobalHashtags(hashtags: string[]): string[] {
   return result;
 }
 
+// ============================================================================
+// Emoji Utilities for Enforcement
+// ============================================================================
+
+// We use \p{Extended_Pictographic} which covers actual pictographic emojis
+// WITHOUT matching plain text characters like #, *, 0-9
+// This is the correct Unicode property for "visual" emojis
+
+// Fallback regex for environments without Unicode property support
+// Covers major emoji ranges without matching plain ASCII
+const EMOJI_REGEX_FALLBACK = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FAFF}]|[\u{1F000}-\u{1F02F}]|[\u{1F0A0}-\u{1F0FF}]|[\u{231A}-\u{231B}]|[\u{23E9}-\u{23F3}]|[\u{23F8}-\u{23FA}]|[\u{2614}-\u{2615}]|[\u{2648}-\u{2653}]|[\u{267F}]|[\u{2693}]|[\u{26A1}]|[\u{26AA}-\u{26AB}]|[\u{26BD}-\u{26BE}]|[\u{26C4}-\u{26C5}]|[\u{26CE}]|[\u{26D4}]|[\u{26EA}]|[\u{26F2}-\u{26F3}]|[\u{26F5}]|[\u{26FA}]|[\u{26FD}]|[\u{2702}]|[\u{2705}]|[\u{2708}-\u{270D}]|[\u{270F}]|[\u{2712}]|[\u{2714}]|[\u{2716}]|[\u{271D}]|[\u{2721}]|[\u{2728}]|[\u{2733}-\u{2734}]|[\u{2744}]|[\u{2747}]|[\u{274C}]|[\u{274E}]|[\u{2753}-\u{2755}]|[\u{2757}]|[\u{2763}-\u{2764}]|[\u{2795}-\u{2797}]|[\u{27A1}]|[\u{27B0}]|[\u{27BF}]|[\u{2934}-\u{2935}]|[\u{2B05}-\u{2B07}]|[\u{2B1B}-\u{2B1C}]|[\u{2B50}]|[\u{2B55}]|[\u{3030}]|[\u{303D}]|[\u{3297}]|[\u{3299}]/gu;
+
+// Cache whether Unicode property escapes are supported
+let unicodePropertiesSupported: boolean | null = null;
+
+function supportsUnicodeProperties(): boolean {
+  if (unicodePropertiesSupported === null) {
+    try {
+      new RegExp("\\p{Extended_Pictographic}", "u");
+      unicodePropertiesSupported = true;
+    } catch {
+      unicodePropertiesSupported = false;
+    }
+  }
+  return unicodePropertiesSupported;
+}
+
+// Get a fresh regex instance (needed because of lastIndex state with /g flag)
+function getEmojiRegex(): RegExp {
+  if (supportsUnicodeProperties()) {
+    return new RegExp("\\p{Extended_Pictographic}", "gu");
+  }
+  return new RegExp(EMOJI_REGEX_FALLBACK.source, "gu");
+}
+
+// Find all emojis in text - handles compound emojis (ZWJ sequences) as single units
+function findEmojis(text: string): string[] {
+  // Use segmenter for accurate emoji counting if available (Node 16+)
+  // This correctly handles compound emojis like family emojis, flags, etc.
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    const segmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
+    const segments = [...segmenter.segment(text)];
+    return segments
+      .map(s => s.segment)
+      .filter(segment => {
+        // A grapheme is an emoji if it contains any Extended_Pictographic character
+        const regex = getEmojiRegex();
+        return regex.test(segment);
+      });
+  }
+
+  // Fallback: simple regex matching (may not handle compound emojis perfectly)
+  const regex = getEmojiRegex();
+  const matches = text.match(regex);
+  return matches || [];
+}
+
+// Count emojis in text
+function countEmojis(text: string): number {
+  return findEmojis(text).length;
+}
+
+// Strip all emojis from text
+function stripEmojis(text: string): string {
+  const regex = getEmojiRegex();
+  // Also remove ZWJ and variation selectors that might be orphaned
+  return text
+    .replace(regex, "")
+    .replace(/[\u200D\uFE0E\uFE0F]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+// Trim emojis to max count (removes from end first)
+function trimEmojisToMax(text: string, maxCount: number): string {
+  if (maxCount <= 0) {
+    return stripEmojis(text);
+  }
+
+  const emojis = findEmojis(text);
+  if (emojis.length <= maxCount) {
+    return text; // Already within limit
+  }
+
+  // Find positions of all emojis using grapheme segmenter if available
+  const positions: { emoji: string; index: number; length: number }[] = [];
+
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    const segmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
+    const segments = [...segmenter.segment(text)];
+    let currentIndex = 0;
+
+    for (const segment of segments) {
+      const regex = getEmojiRegex();
+      if (regex.test(segment.segment)) {
+        positions.push({
+          emoji: segment.segment,
+          index: currentIndex,
+          length: segment.segment.length
+        });
+      }
+      currentIndex += segment.segment.length;
+    }
+  } else {
+    // Fallback: simple regex matching
+    const regex = getEmojiRegex();
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      positions.push({
+        emoji: match[0],
+        index: match.index,
+        length: match[0].length
+      });
+    }
+  }
+
+  // Keep only the first maxCount emojis, remove the rest (from end)
+  const toRemove = positions.slice(maxCount);
+  let result = text;
+
+  // Remove from end to preserve indices
+  for (let i = toRemove.length - 1; i >= 0; i--) {
+    const pos = toRemove[i];
+    result = result.slice(0, pos.index) + result.slice(pos.index + pos.length);
+  }
+
+  // Clean up any double spaces and orphaned ZWJ/variation selectors
+  return result
+    .replace(/[\u200D\uFE0E\uFE0F]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+// Enforce emoji limits on a caption based on emojiStyle
+// LIMITS: none=0, light=1, medium=2 (per caption)
+type EmojiStyleType = "none" | "light" | "medium";
+
+interface EmojiEnforcementResult {
+  caption: string;
+  originalCount: number;
+  finalCount: number;
+  stripped: number;
+}
+
+function enforceEmojiLimit(caption: string, emojiStyle: EmojiStyleType): EmojiEnforcementResult {
+  const originalCount = countEmojis(caption);
+
+  // STRICT LIMITS: none=0, light=1, medium=2
+  const maxEmojis: Record<EmojiStyleType, number> = {
+    none: 0,
+    light: 1,
+    medium: 2,
+  };
+
+  const max = maxEmojis[emojiStyle] ?? 2;
+
+  let result: string;
+  if (max === 0) {
+    result = stripEmojis(caption);
+  } else if (originalCount > max) {
+    result = trimEmojisToMax(caption, max);
+  } else {
+    result = caption;
+  }
+
+  const finalCount = countEmojis(result);
+
+  return {
+    caption: result,
+    originalCount,
+    finalCount,
+    stripped: originalCount - finalCount,
+  };
+}
+
 interface PreviousOutputs {
   igCaption?: string;
   igHashtags?: string[];
@@ -330,6 +526,7 @@ function buildPrompt(
   starterText: string | undefined,
   brandVoice: string,
   hashtagStyle: "light" | "medium" | "heavy",
+  emojiStyle: "none" | "light" | "medium",
   dateStr: string,
   isRegenerate: boolean = false,
   previousOutputs?: PreviousOutputs
@@ -341,6 +538,16 @@ function buildPrompt(
   };
 
   const counts = hashtagCounts[hashtagStyle] || hashtagCounts.medium;
+
+  // Emoji style instructions - STRICT enforcement rules
+  // LIMITS: none=0, light=1, medium=2 (per caption)
+  const emojiInstructions = {
+    none: "ABSOLUTE RULE: Do NOT use ANY emojis whatsoever. ZERO emojis allowed. No exceptions. The captions must be 100% plain text only - no emoji characters of any kind.",
+    light: "Use emojis VERY SPARINGLY - MAXIMUM 1 emoji per caption total. Only if essential for tone.",
+    medium: "Use emojis SPARINGLY - MAXIMUM 2 emojis per caption total. Place them strategically.",
+  };
+
+  const emojiGuidance = emojiInstructions[emojiStyle] || emojiInstructions.medium;
 
   // Build context based ONLY on user-provided text
   let contextInfo = "";
@@ -395,8 +602,9 @@ CRITICAL RULES:
 Create engaging, upbeat social media captions for both Instagram and Facebook.
 
 Requirements:
-- Instagram caption: 1-3 short paragraphs, engaging and emoji-friendly
+- Instagram caption: 1-3 short paragraphs, engaging
 - Facebook caption: Slightly longer and more informative, conversational tone
+- Emoji usage: ${emojiGuidance}
 - Instagram hashtags: ${counts.ig} relevant tags derived ONLY from the provided text
 - Facebook hashtags: ${counts.fb} relevant tags derived ONLY from the provided text
 - All hashtags MUST include the "#" symbol (e.g. #FallSpecial, #DinnerTime)
@@ -552,6 +760,7 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
     const workspaceData = workspaceDoc.data() || {};
     const brandVoice = workspaceData.settings?.ai?.brandVoice || "";
     const hashtagStyle = workspaceData.settings?.ai?.hashtagStyle || "medium";
+    const emojiStyle = workspaceData.settings?.ai?.emojiStyle || "medium";
 
     // 7. Get OpenAI client
     const apiKey = process.env.OPENAI_API_KEY;
@@ -574,7 +783,7 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
       };
     }
 
-    const prompt = buildPrompt(starterText, brandVoice, hashtagStyle, dateId, regenerate, prevOutputs);
+    const prompt = buildPrompt(starterText, brandVoice, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs);
 
     // Generate unique request ID for cache-busting and prompt variation
     const requestId = request.data.requestId || randomUUID();
@@ -592,12 +801,19 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
 
         const promptText = attempts === 1 ? prompt : `${prompt}\n\nPrevious response was invalid JSON. Please return ONLY valid JSON.`;
 
+        // Build system message with emoji rules - STRICT LIMITS
+        const emojiSystemRule = emojiStyle === "none"
+          ? "ABSOLUTE RULE: You MUST NOT use ANY emojis. ZERO emojis allowed. Plain text only."
+          : emojiStyle === "light"
+          ? "STRICT: Maximum 1 emoji per caption only."
+          : "STRICT: Maximum 2 emojis per caption only.";
+
         const completion = await openai.chat.completions.create({
           model: MODEL_NAME,
           messages: [
             {
               role: "system",
-              content: `You are a social media copywriter. Use ONLY the user-provided text description. Images are completely ignored - do NOT reference, describe, or assume anything about images. Do NOT mention visual elements, food appearance, or photos. Return ONLY valid JSON. ${nonceMessage}`,
+              content: `You are a social media copywriter. Use ONLY the user-provided text description. Images are completely ignored - do NOT reference, describe, or assume anything about images. Do NOT mention visual elements, food appearance, or photos. ${emojiSystemRule} Return ONLY valid JSON. ${nonceMessage}`,
             },
             {
               role: "user",
@@ -641,7 +857,29 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
       throw new HttpsError("internal", "Failed to parse AI response");
     }
 
-    // 10. Write AI output to Firestore
+    // 10. Enforce emoji limits (server-side post-processing)
+    console.info(`[EmojiEnforcement] emojiStyle=${emojiStyle}, dateId=${dateId}`);
+
+    const igEnforcement = enforceEmojiLimit(aiOutput.ig.caption, emojiStyle as EmojiStyleType);
+    const fbEnforcement = enforceEmojiLimit(aiOutput.fb.caption, emojiStyle as EmojiStyleType);
+
+    // Apply enforced captions
+    aiOutput.ig.caption = igEnforcement.caption;
+    aiOutput.fb.caption = fbEnforcement.caption;
+
+    // Log enforcement results
+    if (igEnforcement.stripped > 0 || fbEnforcement.stripped > 0) {
+      console.info(
+        `[EmojiEnforcement] Stripped emojis - IG: ${igEnforcement.originalCount} -> ${igEnforcement.finalCount} (removed ${igEnforcement.stripped}), ` +
+        `FB: ${fbEnforcement.originalCount} -> ${fbEnforcement.finalCount} (removed ${fbEnforcement.stripped})`
+      );
+    } else {
+      console.info(
+        `[EmojiEnforcement] No stripping needed - IG: ${igEnforcement.finalCount} emojis, FB: ${fbEnforcement.finalCount} emojis`
+      );
+    }
+
+    // 11. Write AI output to Firestore
     await postRef.update({
       ai: {
         ig: {

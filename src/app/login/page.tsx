@@ -39,6 +39,7 @@ export default function LoginPage() {
                         alt="The Social Studio Logo"
                         fill
                         className="object-contain"
+                        sizes="80px"
                     />
                 </div>
 

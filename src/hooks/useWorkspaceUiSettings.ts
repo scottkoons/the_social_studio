@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
-import { HashtagStyle } from "@/lib/types";
+import { HashtagStyle, EmojiStyle } from "@/lib/types";
 
 interface WorkspaceUiSettings {
     hidePastUnsent: boolean;
@@ -13,6 +13,7 @@ interface WorkspaceUiSettings {
 interface WorkspaceAiSettings {
     brandVoice: string;
     hashtagStyle: HashtagStyle;
+    emojiStyle: EmojiStyle;
 }
 
 interface WorkspaceSettings {
@@ -27,6 +28,7 @@ interface UseWorkspaceUiSettingsResult {
     setHidePastUnsent: (value: boolean) => Promise<void>;
     setBrandVoice: (value: string) => Promise<void>;
     setHashtagStyle: (value: HashtagStyle) => Promise<void>;
+    setEmojiStyle: (value: EmojiStyle) => Promise<void>;
 }
 
 const DEFAULT_UI_SETTINGS: WorkspaceUiSettings = {
@@ -36,6 +38,7 @@ const DEFAULT_UI_SETTINGS: WorkspaceUiSettings = {
 const DEFAULT_AI_SETTINGS: WorkspaceAiSettings = {
     brandVoice: "",
     hashtagStyle: "medium",
+    emojiStyle: "medium",
 };
 
 const LOCAL_STORAGE_KEY = "workspaceSettings";
@@ -90,6 +93,7 @@ export function useWorkspaceUiSettings(): UseWorkspaceUiSettingsResult {
                         ai: {
                             brandVoice: aiData.brandVoice ?? DEFAULT_AI_SETTINGS.brandVoice,
                             hashtagStyle: aiData.hashtagStyle ?? DEFAULT_AI_SETTINGS.hashtagStyle,
+                            emojiStyle: aiData.emojiStyle ?? DEFAULT_AI_SETTINGS.emojiStyle,
                         },
                     };
                     setSettings(newSettings);
@@ -203,6 +207,37 @@ export function useWorkspaceUiSettings(): UseWorkspaceUiSettingsResult {
         [workspaceId]
     );
 
+    // Update emojiStyle in Firestore
+    const setEmojiStyle = useCallback(
+        async (value: EmojiStyle) => {
+            if (!workspaceId) return;
+
+            // Optimistic update
+            setSettings((prev) => ({
+                ...prev,
+                ai: { ...prev.ai, emojiStyle: value },
+            }));
+
+            try {
+                const workspaceRef = doc(db, "workspaces", workspaceId);
+                await setDoc(
+                    workspaceRef,
+                    {
+                        settings: {
+                            ai: {
+                                emojiStyle: value,
+                            },
+                        },
+                    },
+                    { merge: true }
+                );
+            } catch (error) {
+                console.error("Error saving emoji style:", error);
+            }
+        },
+        [workspaceId]
+    );
+
     return {
         settings: settings.ui,
         aiSettings: settings.ai,
@@ -210,5 +245,6 @@ export function useWorkspaceUiSettings(): UseWorkspaceUiSettingsResult {
         setHidePastUnsent,
         setBrandVoice,
         setHashtagStyle,
+        setEmojiStyle,
     };
 }
