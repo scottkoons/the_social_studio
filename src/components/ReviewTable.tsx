@@ -12,6 +12,12 @@ interface ReviewTableProps {
     generatingIds?: Set<string>;
     onSelectRow: (id: string, selected: boolean) => void;
     onSelectAll: (selected: boolean) => void;
+    onRegenerate?: (dateId: string, previousOutputs?: {
+        igCaption?: string;
+        igHashtags?: string[];
+        fbCaption?: string;
+        fbHashtags?: string[];
+    }) => void;
 }
 
 export default function ReviewTable({
@@ -19,7 +25,8 @@ export default function ReviewTable({
     selectedIds,
     generatingIds = new Set(),
     onSelectRow,
-    onSelectAll
+    onSelectAll,
+    onRegenerate
 }: ReviewTableProps) {
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
@@ -91,6 +98,7 @@ export default function ReviewTable({
                             isSelected={selectedIds.has(post.date)}
                             isGenerating={generatingIds.has(post.date)}
                             onSelect={onSelectRow}
+                            onRegenerate={onRegenerate}
                         />
                     ))}
                 </tbody>

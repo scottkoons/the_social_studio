@@ -6,9 +6,9 @@ import { db } from "@/lib/firebase";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import ImageUpload from "./ImageUpload";
 import StatusPill from "./ui/StatusPill";
-import { Loader2, Pencil } from "lucide-react";
+import { Loader2, Pencil, RefreshCw } from "lucide-react";
 import Link from "next/link";
-import { isPastOrTodayInDenver } from "@/lib/utils";
+import { isPastOrTodayInDenver, normalizeHashtagsArray, appendGlobalHashtags } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 
 interface ReviewRowProps {
@@ -16,6 +16,12 @@ interface ReviewRowProps {
     isSelected: boolean;
     isGenerating?: boolean;
     onSelect: (id: string, selected: boolean) => void;
+    onRegenerate?: (dateId: string, previousOutputs?: {
+        igCaption?: string;
+        igHashtags?: string[];
+        fbCaption?: string;
+        fbHashtags?: string[];
+    }) => void;
 }
 
 const DEFAULT_AI: Omit<PostDayAI, 'meta'> & { meta?: PostDayAI['meta'] } = {
@@ -23,7 +29,7 @@ const DEFAULT_AI: Omit<PostDayAI, 'meta'> & { meta?: PostDayAI['meta'] } = {
     fb: { caption: "", hashtags: [] },
 };
 
-export default function ReviewRow({ post, isSelected, isGenerating, onSelect }: ReviewRowProps) {
+export default function ReviewRow({ post, isSelected, isGenerating, onSelect, onRegenerate }: ReviewRowProps) {
     const { user, workspaceId } = useAuth();
     const [localAi, setLocalAi] = useState<typeof DEFAULT_AI>(() => {
         if (post.ai) {
@@ -84,8 +90,15 @@ export default function ReviewRow({ post, isSelected, isGenerating, onSelect }: 
     };
 
     const handleHashtagChange = (platform: 'ig' | 'fb', value: string) => {
-        const tags = value.split(',').map(t => t.trim()).filter(t => t !== "");
-        updatePlatformField(platform, 'hashtags', tags);
+        // Split, normalize (add # if missing), filter empty, then append global hashtags
+        const rawTags = value.split(',');
+        const normalizedTags = normalizeHashtagsArray(rawTags);
+        const withGlobals = appendGlobalHashtags(normalizedTags);
+        updatePlatformField(platform, 'hashtags', withGlobals);
+    };
+
+    const countWords = (text: string): number => {
+        return text.split(/\s+/).filter(word => word !== "").length;
     };
 
     return (
@@ -158,9 +171,12 @@ export default function ReviewRow({ post, isSelected, isGenerating, onSelect }: 
                             <textarea
                                 value={localAi.ig.caption}
                                 onChange={(e) => updatePlatformField('ig', 'caption', e.target.value)}
-                                className="w-full text-sm border border-gray-200 bg-white rounded-lg p-2.5 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 min-h-[72px] resize-none leading-relaxed"
+                                className="w-full text-sm text-gray-900 placeholder:text-gray-400 border border-gray-200 bg-white rounded-lg p-2.5 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 min-h-[72px] resize-none leading-relaxed"
                                 placeholder="AI will generate caption..."
                             />
+                            <div className="text-right mt-1">
+                                <span className="text-xs text-gray-400">{countWords(localAi.ig.caption)} words</span>
+                            </div>
                         </div>
                         <div>
                             <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Hashtags</label>
@@ -168,7 +184,7 @@ export default function ReviewRow({ post, isSelected, isGenerating, onSelect }: 
                                 type="text"
                                 value={localAi.ig.hashtags.join(', ')}
                                 onChange={(e) => handleHashtagChange('ig', e.target.value)}
-                                className="w-full text-sm border border-gray-200 bg-white rounded-lg p-2.5 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                                className="w-full text-sm text-gray-900 placeholder:text-gray-400 border border-gray-200 bg-white rounded-lg p-2.5 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
                                 placeholder="#example, #tags"
                             />
                         </div>
@@ -192,9 +208,12 @@ export default function ReviewRow({ post, isSelected, isGenerating, onSelect }: 
                             <textarea
                                 value={localAi.fb.caption}
                                 onChange={(e) => updatePlatformField('fb', 'caption', e.target.value)}
-                                className="w-full text-sm border border-gray-200 bg-white rounded-lg p-2.5 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 min-h-[72px] resize-none leading-relaxed"
+                                className="w-full text-sm text-gray-900 placeholder:text-gray-400 border border-gray-200 bg-white rounded-lg p-2.5 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 min-h-[72px] resize-none leading-relaxed"
                                 placeholder="AI will generate caption..."
                             />
+                            <div className="text-right mt-1">
+                                <span className="text-xs text-gray-400">{countWords(localAi.fb.caption)} words</span>
+                            </div>
                         </div>
                         <div>
                             <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Hashtags</label>
@@ -202,7 +221,7 @@ export default function ReviewRow({ post, isSelected, isGenerating, onSelect }: 
                                 type="text"
                                 value={localAi.fb.hashtags.join(', ')}
                                 onChange={(e) => handleHashtagChange('fb', e.target.value)}
-                                className="w-full text-sm border border-gray-200 bg-white rounded-lg p-2.5 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                                className="w-full text-sm text-gray-900 placeholder:text-gray-400 border border-gray-200 bg-white rounded-lg p-2.5 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
                                 placeholder="#example, #tags"
                             />
                         </div>
@@ -216,16 +235,40 @@ export default function ReviewRow({ post, isSelected, isGenerating, onSelect }: 
                     {isSaving ? (
                         <Loader2 className="animate-spin text-teal-500" size={16} />
                     ) : (
-                        <StatusPill status={post.status} isPastDue={isPast && post.status !== 'sent'} />
+                        <StatusPill status={post.status} wouldBeSkipped={isPast || !post.imageAssetId} />
                     )}
                     {localAi.meta?.confidence != null && localAi.meta.confidence > 0 && (
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                            localAi.meta.confidence >= 0.7
-                                ? "bg-green-50 text-green-600"
-                                : "bg-amber-50 text-amber-600"
-                            }`}>
-                            {Math.round(localAi.meta.confidence * 100)}%
+                        <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                localAi.meta.confidence >= 0.7
+                                    ? "bg-gray-50 text-gray-500"
+                                    : "bg-amber-50 text-amber-600"
+                            }`}
+                            title="AI confidence score indicating content quality"
+                        >
+                            <span className="font-normal">AI</span>{" "}
+                            <span className="font-semibold">{Math.round(localAi.meta.confidence * 100)}%</span>
                         </span>
+                    )}
+                    {onRegenerate && (
+                        <button
+                            onClick={() => onRegenerate(post.date, {
+                                igCaption: localAi.ig.caption,
+                                igHashtags: localAi.ig.hashtags,
+                                fbCaption: localAi.fb.caption,
+                                fbHashtags: localAi.fb.hashtags,
+                            })}
+                            disabled={isGenerating}
+                            className="inline-flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-teal-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Regenerate AI content for this post"
+                        >
+                            {isGenerating ? (
+                                <Loader2 className="animate-spin" size={12} />
+                            ) : (
+                                <RefreshCw size={12} />
+                            )}
+                            Regenerate
+                        </button>
                     )}
                 </div>
             </td>

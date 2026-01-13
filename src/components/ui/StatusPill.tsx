@@ -5,7 +5,12 @@ type StatusType = 'input' | 'generated' | 'edited' | 'sent' | 'error';
 interface StatusPillProps {
     status: StatusType;
     showDot?: boolean;
-    isPastDue?: boolean;
+    /**
+     * UI-only flag indicating this post would be skipped if sent.
+     * True if past date, missing image, or any other skip reason.
+     * Shows "Not Sent" yellow pill when true and status is not 'sent' or 'error'.
+     */
+    wouldBeSkipped?: boolean;
 }
 
 const statusConfig: Record<StatusType, { label: string; dotColor: string; bgColor: string; textColor: string }> = {
@@ -41,7 +46,7 @@ const statusConfig: Record<StatusType, { label: string; dotColor: string; bgColo
     }
 };
 
-// UI-only override for past-due posts (past date + not sent)
+// UI-only override for skipped posts (past date, missing image, etc.)
 const notSentConfig = {
     label: 'Not Sent',
     dotColor: 'bg-yellow-500',
@@ -49,11 +54,22 @@ const notSentConfig = {
     textColor: 'text-yellow-700'
 };
 
-export default function StatusPill({ status, showDot = true, isPastDue = false }: StatusPillProps) {
-    // If past due and not sent, show "Not Sent" yellow pill
-    const config = (isPastDue && status !== 'sent')
-        ? notSentConfig
-        : (statusConfig[status] || statusConfig.input);
+export default function StatusPill({ status, showDot = true, wouldBeSkipped = false }: StatusPillProps) {
+    // Status priority:
+    // 1. 'sent' always shows green Sent
+    // 2. 'error' always shows red Error (API/generation failure)
+    // 3. If wouldBeSkipped, show yellow Not Sent
+    // 4. Otherwise, show the stored status
+    let config;
+    if (status === 'sent') {
+        config = statusConfig.sent;
+    } else if (status === 'error') {
+        config = statusConfig.error;
+    } else if (wouldBeSkipped) {
+        config = notSentConfig;
+    } else {
+        config = statusConfig[status] || statusConfig.input;
+    }
 
     return (
         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${config.bgColor} ${config.textColor}`}>

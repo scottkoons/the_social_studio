@@ -14,6 +14,7 @@ import { PostDay } from "@/lib/types";
 import { getTodayInDenver } from "@/lib/utils";
 import { useWorkspaceUiSettings } from "@/hooks/useWorkspaceUiSettings";
 import Image from "next/image";
+import CalendarEditModal from "@/components/CalendarEditModal";
 
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -38,6 +39,14 @@ export default function CalendarPage() {
     const [showOverwriteModal, setShowOverwriteModal] = useState(false);
     const [pendingDrop, setPendingDrop] = useState<{ source: DragData; targetDate: string } | null>(null);
     const [isMoving, setIsMoving] = useState(false);
+
+    // Edit modal state
+    const [editModalOpen, setEditModalOpen] = useState(false);
+    const [editingPost, setEditingPost] = useState<PostDay | null>(null);
+    const [editingPostImageUrl, setEditingPostImageUrl] = useState<string | null>(null);
+
+    // Date conflict from edit modal (for overwrite confirmation)
+    const [editDateConflict, setEditDateConflict] = useState<{ sourceDate: string; targetDate: string } | null>(null);
 
     // Global setting for hiding past unsent posts
     const { settings } = useWorkspaceUiSettings();
@@ -120,8 +129,12 @@ export default function CalendarPage() {
         }
     }, [workspaceId, posts]);
 
-    // Handle overwrite confirmation
+    // Handle overwrite confirmation (for both drag-drop and edit modal)
     const handleOverwriteConfirm = async () => {
+        if (editDateConflict) {
+            await handleEditOverwriteConfirm();
+            return;
+        }
         if (!pendingDrop) return;
         setShowOverwriteModal(false);
         await movePost(pendingDrop.source.sourceDate, pendingDrop.targetDate, true);
@@ -131,6 +144,7 @@ export default function CalendarPage() {
     const handleOverwriteCancel = () => {
         setShowOverwriteModal(false);
         setPendingDrop(null);
+        setEditDateConflict(null);
         setDraggedPost(null);
         setDropTarget(null);
     };
@@ -164,14 +178,30 @@ export default function CalendarPage() {
         setDropTarget(null);
     }, [draggedPost, movePost]);
 
-    // Click handlers (stubbed for future edit modal)
-    const handlePostClick = useCallback((dateStr: string, post: PostDay) => {
-        // TODO: Open edit modal instead of navigating
-        router.push(`/review?date=${dateStr}`);
-    }, [router]);
+    // Click handlers
+    const handlePostClick = useCallback(async (dateStr: string, post: PostDay) => {
+        // Fetch image URL if post has an image
+        let imgUrl: string | null = null;
+        if (post.imageAssetId) {
+            try {
+                const assetRef = doc(db, "workspaces", workspaceId!, "assets", post.imageAssetId);
+                const assetSnap = await getDoc(assetRef);
+                if (assetSnap.exists()) {
+                    const asset = assetSnap.data();
+                    imgUrl = await getDownloadURL(ref(storage, asset.storagePath));
+                }
+            } catch (err) {
+                console.error("Error fetching image URL:", err);
+            }
+        }
+
+        setEditingPost(post);
+        setEditingPostImageUrl(imgUrl);
+        setEditModalOpen(true);
+    }, [workspaceId]);
 
     const handleEmptyDayClick = useCallback((dateStr: string) => {
-        // TODO: Open create modal instead of navigating
+        // Navigate to input page for creating new posts
         router.push(`/input?date=${dateStr}`);
     }, [router]);
 
@@ -183,6 +213,51 @@ export default function CalendarPage() {
             handleEmptyDayClick(dateStr);
         }
     };
+
+    // Handle date conflict from edit modal
+    const handleEditDateConflict = useCallback((sourceDate: string, targetDate: string) => {
+        setEditDateConflict({ sourceDate, targetDate });
+        setShowOverwriteModal(true);
+    }, []);
+
+    // Handle overwrite from edit modal conflict
+    const handleEditOverwriteConfirm = async () => {
+        if (!editDateConflict || !workspaceId) return;
+
+        setIsMoving(true);
+        try {
+            const sourcePost = posts.get(editDateConflict.sourceDate);
+            if (!sourcePost) return;
+
+            const sourceDocRef = doc(db, "workspaces", workspaceId, "post_days", editDateConflict.sourceDate);
+            const targetDocRef = doc(db, "workspaces", workspaceId, "post_days", editDateConflict.targetDate);
+
+            // Move post to target date (overwrites existing)
+            await setDoc(targetDocRef, {
+                ...sourcePost,
+                date: editDateConflict.targetDate,
+                updatedAt: serverTimestamp(),
+            });
+
+            // Delete source doc
+            await deleteDoc(sourceDocRef);
+
+            setEditModalOpen(false);
+            setEditingPost(null);
+        } catch (err) {
+            console.error("Overwrite error:", err);
+        } finally {
+            setIsMoving(false);
+            setShowOverwriteModal(false);
+            setEditDateConflict(null);
+        }
+    };
+
+    const handleCloseEditModal = useCallback(() => {
+        setEditModalOpen(false);
+        setEditingPost(null);
+        setEditingPostImageUrl(null);
+    }, []);
 
     // Generate the grid of days (6 weeks)
     const generateCalendarDays = () => {
@@ -316,8 +391,20 @@ export default function CalendarPage() {
                 )}
             </DashboardCard>
 
+            {/* Edit Modal */}
+            {editingPost && (
+                <CalendarEditModal
+                    isOpen={editModalOpen}
+                    post={editingPost}
+                    workspaceId={workspaceId}
+                    imageUrl={editingPostImageUrl}
+                    onClose={handleCloseEditModal}
+                    onDateConflict={handleEditDateConflict}
+                />
+            )}
+
             {/* Overwrite Confirmation Modal */}
-            {showOverwriteModal && pendingDrop && (
+            {showOverwriteModal && (pendingDrop || editDateConflict) && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
                         {/* Header */}
@@ -334,7 +421,7 @@ export default function CalendarPage() {
                         {/* Content */}
                         <div className="px-5 py-5">
                             <p className="text-gray-600">
-                                A post already exists on <span className="font-semibold text-gray-900 font-mono">{pendingDrop.targetDate}</span>.
+                                A post already exists on <span className="font-semibold text-gray-900 font-mono">{pendingDrop?.targetDate || editDateConflict?.targetDate}</span>.
                             </p>
                             <p className="text-sm text-gray-500 mt-2">
                                 Do you want to overwrite it? This will replace the existing post with the one you're moving.

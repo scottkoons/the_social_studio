@@ -5,7 +5,7 @@ import Papa from "papaparse";
 import { db, functions } from "@/lib/firebase";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
-import { FileDown, AlertCircle, Check, X, Image } from "lucide-react";
+import { FileDown, AlertCircle, Check, X, Image, ChevronDown, ChevronUp } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 interface ParsedRow {
@@ -28,12 +28,20 @@ interface ImportImageResponse {
     error?: string;
 }
 
+interface ImageImportError {
+    date: string;
+    imageUrl: string;
+    reason: string;
+    type: 'skipped' | 'failed';
+}
+
 export default function CSVImport() {
     const { user, workspaceId, workspaceLoading } = useAuth();
     const [isImporting, setIsImporting] = useState(false);
     const [importingImages, setImportingImages] = useState(false);
     const [imageProgress, setImageProgress] = useState({ current: 0, total: 0 });
-    const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+    const [status, setStatus] = useState<{ type: 'success' | 'error' | 'warn', message: string } | null>(null);
+    const [showDetails, setShowDetails] = useState(false);
 
     // Compute if import is allowed
     const canImport = !workspaceLoading && !!workspaceId && !!user;
@@ -58,11 +66,16 @@ export default function CSVImport() {
         overwritten: 0,
         skipped: 0,
         imagesImported: 0,
+        imagesSkipped: 0,
         imagesFailed: 0
     });
 
     // Track rows that need image import
     const rowsWithImagesRef = useRef<ParsedRow[]>([]);
+
+    // Track image import errors for display
+    const imageErrorsRef = useRef<ImageImportError[]>([]);
+    const [imageErrors, setImageErrors] = useState<ImageImportError[]>([]);
 
     const resetState = () => {
         setShowModal(false);
@@ -72,15 +85,18 @@ export default function CSVImport() {
         setOverwriteEmptyOnly(false);
         setImportingImages(false);
         setImageProgress({ current: 0, total: 0 });
+        setShowDetails(false);
         pendingImportRef.current = null;
         countersRef.current = {
             created: 0,
             overwritten: 0,
             skipped: 0,
             imagesImported: 0,
+            imagesSkipped: 0,
             imagesFailed: 0
         };
         rowsWithImagesRef.current = [];
+        imageErrorsRef.current = [];
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -101,14 +117,17 @@ export default function CSVImport() {
 
         setIsImporting(true);
         setStatus(null);
+        setShowDetails(false);
         countersRef.current = {
             created: 0,
             overwritten: 0,
             skipped: 0,
             imagesImported: 0,
+            imagesSkipped: 0,
             imagesFailed: 0
         };
         rowsWithImagesRef.current = [];
+        imageErrorsRef.current = [];
 
         // Capture workspaceId at parse time to use in async callback
         const currentWorkspaceId = workspaceId;
@@ -227,6 +246,49 @@ export default function CSVImport() {
         }
     };
 
+    // Helper to determine if an error indicates the URL should be skipped (not a valid image)
+    // vs a real failure (network error, server error, etc.)
+    const isSkipError = (errorMessage: string): boolean => {
+        const skipPatterns = [
+            /invalid content.?type/i,
+            /not an image/i,
+            /text\/html/i,
+            /application\/json/i,
+            /allowed.*image/i,
+            /http 4\d{2}/i,  // 4xx client errors (404, 403, etc.)
+            /invalid.*url/i,
+            /empty.*0 bytes/i,
+        ];
+        return skipPatterns.some(pattern => pattern.test(errorMessage));
+    };
+
+    // Extract a user-friendly reason from the error message
+    const extractErrorReason = (errorMessage: string): string => {
+        if (/invalid content.?type.*"([^"]+)"/i.test(errorMessage)) {
+            const match = errorMessage.match(/invalid content.?type.*"([^"]+)"/i);
+            return `Not an image (${match?.[1] || 'invalid type'})`;
+        }
+        if (/text\/html/i.test(errorMessage)) {
+            return 'URL returned HTML (not an image)';
+        }
+        if (/http 404/i.test(errorMessage)) {
+            return 'Image not found (404)';
+        }
+        if (/http 403/i.test(errorMessage)) {
+            return 'Access denied (403)';
+        }
+        if (/http 4\d{2}/i.test(errorMessage)) {
+            return 'URL not accessible';
+        }
+        if (/empty.*0 bytes/i.test(errorMessage)) {
+            return 'Empty file (0 bytes)';
+        }
+        if (/failed to fetch/i.test(errorMessage)) {
+            return 'Could not fetch URL';
+        }
+        return errorMessage.length > 50 ? errorMessage.substring(0, 47) + '...' : errorMessage;
+    };
+
     const processImageImports = async () => {
         if (!workspaceId || rowsWithImagesRef.current.length === 0) return;
 
@@ -252,15 +314,61 @@ export default function CSVImport() {
                 if (result.data.success) {
                     countersRef.current.imagesImported++;
                 } else {
-                    console.error("Image import failed:", row.date, result.data.error);
+                    // Cloud function returned success: false with an error message
+                    const errorMsg = result.data.error || 'Unknown error';
+                    const isSkip = isSkipError(errorMsg);
+                    const reason = extractErrorReason(errorMsg);
+
+                    if (isSkip) {
+                        countersRef.current.imagesSkipped++;
+                    } else {
+                        countersRef.current.imagesFailed++;
+                    }
+
+                    imageErrorsRef.current.push({
+                        date: row.date,
+                        imageUrl: row.imageUrl!,
+                        reason,
+                        type: isSkip ? 'skipped' : 'failed'
+                    });
+
+                    // Use warn for expected skips, error for real failures
+                    if (isSkip) {
+                        console.warn(`Image skipped (non-image URL): ${row.date}`, reason);
+                    } else {
+                        console.error(`Image upload failed: ${row.date}`, errorMsg);
+                    }
+                }
+            } catch (err: any) {
+                // Exception thrown (e.g., HttpsError from Cloud Function)
+                const errorMsg = err?.message || String(err);
+                const isSkip = isSkipError(errorMsg);
+                const reason = extractErrorReason(errorMsg);
+
+                if (isSkip) {
+                    countersRef.current.imagesSkipped++;
+                } else {
                     countersRef.current.imagesFailed++;
                 }
-            } catch (err) {
-                console.error("Image import error:", row.date, err);
-                countersRef.current.imagesFailed++;
+
+                imageErrorsRef.current.push({
+                    date: row.date,
+                    imageUrl: row.imageUrl!,
+                    reason,
+                    type: isSkip ? 'skipped' : 'failed'
+                });
+
+                // Use warn for expected skips, error for real failures
+                if (isSkip) {
+                    console.warn(`Image skipped (non-image URL): ${row.date}`, reason);
+                } else {
+                    console.error(`Image upload failed: ${row.date}`, err);
+                }
             }
         }
 
+        // Copy to state for display
+        setImageErrors([...imageErrorsRef.current]);
         setImportingImages(false);
     };
 
@@ -367,24 +475,49 @@ export default function CSVImport() {
     };
 
     const finishImport = (inputElement: HTMLInputElement | null) => {
-        const { created, overwritten, skipped, imagesImported, imagesFailed } = countersRef.current;
+        const { created, overwritten, skipped, imagesImported, imagesSkipped, imagesFailed } = countersRef.current;
 
         const parts: string[] = [];
         if (created > 0) parts.push(`${created} created`);
         if (overwritten > 0) parts.push(`${overwritten} overwritten`);
         if (skipped > 0) parts.push(`${skipped} skipped`);
+
+        // Image summary
         if (imagesImported > 0) parts.push(`${imagesImported} images imported`);
+        if (imagesSkipped > 0) parts.push(`${imagesSkipped} images skipped`);
         if (imagesFailed > 0) parts.push(`${imagesFailed} images failed`);
 
+        // Determine status type
+        let statusType: 'success' | 'warn' | 'error' = 'success';
+        if (imagesFailed > 0 && imagesImported === 0) {
+            statusType = 'error';
+        } else if (imagesSkipped > 0 || imagesFailed > 0) {
+            statusType = 'warn';
+        }
+
+        // Copy errors to state before partial reset
+        const errors = [...imageErrorsRef.current];
+        setImageErrors(errors);
+
         setStatus({
-            type: imagesFailed > 0 && imagesImported === 0 ? 'error' : 'success',
+            type: statusType,
             message: parts.length > 0 ? parts.join(", ") + "." : "No rows imported."
         });
 
         if (inputElement) {
             inputElement.value = "";
         }
-        resetState();
+
+        // Partial reset - keep status and errors visible
+        setShowModal(false);
+        setDuplicates([]);
+        setCurrentDuplicateIndex(0);
+        setApplyToAll(false);
+        setOverwriteEmptyOnly(false);
+        setImportingImages(false);
+        setImageProgress({ current: 0, total: 0 });
+        pendingImportRef.current = null;
+        rowsWithImagesRef.current = [];
         setIsImporting(false);
     };
 
@@ -416,14 +549,61 @@ export default function CSVImport() {
 
             {/* Status Toast */}
             {status && (
-                <div className={`absolute top-full mt-2 right-0 w-72 p-3 rounded-lg shadow-lg border z-20 ${status.type === 'success' ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'
-                    }`}>
+                <div className={`absolute top-full mt-2 right-0 w-80 p-3 rounded-lg shadow-lg border z-20 ${
+                    status.type === 'success'
+                        ? 'bg-green-50 border-green-100 text-green-700'
+                        : status.type === 'warn'
+                        ? 'bg-yellow-50 border-yellow-100 text-yellow-700'
+                        : 'bg-red-50 border-red-100 text-red-700'
+                }`}>
                     <div className="flex gap-2">
-                        {status.type === 'success' ? <Check size={16} className="shrink-0" /> : <AlertCircle size={16} className="shrink-0" />}
+                        {status.type === 'success' ? (
+                            <Check size={16} className="shrink-0" />
+                        ) : (
+                            <AlertCircle size={16} className="shrink-0" />
+                        )}
                         <p className="text-xs font-medium">{status.message}</p>
                     </div>
+
+                    {/* Expandable error details */}
+                    {imageErrors.length > 0 && (
+                        <div className="mt-2">
+                            <button
+                                onClick={() => setShowDetails(!showDetails)}
+                                className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider opacity-70 hover:opacity-100"
+                            >
+                                {showDetails ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                {showDetails ? 'Hide' : 'Show'} details ({imageErrors.length})
+                            </button>
+
+                            {showDetails && (
+                                <div className="mt-2 max-h-40 overflow-y-auto space-y-1.5 text-[10px]">
+                                    {imageErrors.map((error, idx) => (
+                                        <div
+                                            key={idx}
+                                            className={`p-1.5 rounded ${
+                                                error.type === 'skipped'
+                                                    ? 'bg-yellow-100/50'
+                                                    : 'bg-red-100/50'
+                                            }`}
+                                        >
+                                            <div className="font-medium">{error.date}</div>
+                                            <div className="opacity-70 truncate" title={error.imageUrl}>
+                                                {error.reason}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     <button
-                        onClick={() => setStatus(null)}
+                        onClick={() => {
+                            setStatus(null);
+                            setImageErrors([]);
+                            setShowDetails(false);
+                        }}
                         className="mt-2 text-[10px] underline uppercase tracking-wider font-bold opacity-70"
                     >
                         Dismiss

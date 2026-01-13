@@ -273,13 +273,44 @@ export const importImageFromUrl = onCall<ImportImageRequest>(
 // Generate Post Copy Function
 // ============================================================================
 
-const PROMPT_VERSION = "1.0.0";
-const MODEL_NAME = "gpt-4o-mini";
+const PROMPT_VERSION = "3.0.0"; // Text-only prompts (no image analysis)
+const MODEL_NAME = "gpt-4o-mini"; // Text-only model (cheaper, no vision needed)
+
+// Global hashtags that are automatically appended to all generated posts
+const GLOBAL_HASHTAGS = [
+  "#ColoradoMountainBrewery",
+  "#TrueTasteOfColorado",
+  "#ColoradoSprings",
+];
+
+// Appends global hashtags with case-insensitive deduplication
+function appendGlobalHashtags(hashtags: string[]): string[] {
+  const lowerSet = new Set(hashtags.map(tag => tag.toLowerCase()));
+  const result = [...hashtags];
+
+  for (const globalTag of GLOBAL_HASHTAGS) {
+    if (!lowerSet.has(globalTag.toLowerCase())) {
+      result.push(globalTag);
+      lowerSet.add(globalTag.toLowerCase());
+    }
+  }
+
+  return result;
+}
+
+interface PreviousOutputs {
+  igCaption?: string;
+  igHashtags?: string[];
+  fbCaption?: string;
+  fbHashtags?: string[];
+}
 
 interface GeneratePostCopyRequest {
   workspaceId: string;
   dateId: string;
   regenerate?: boolean;
+  previousOutputs?: PreviousOutputs;
+  requestId?: string;
 }
 
 interface GeneratePostCopyResponse {
@@ -297,10 +328,11 @@ interface AIOutputSchema {
 
 function buildPrompt(
   starterText: string | undefined,
-  hasImage: boolean,
   brandVoice: string,
   hashtagStyle: "light" | "medium" | "heavy",
-  dateStr: string
+  dateStr: string,
+  isRegenerate: boolean = false,
+  previousOutputs?: PreviousOutputs
 ): string {
   const hashtagCounts = {
     light: { ig: "5-8", fb: "3-5" },
@@ -310,47 +342,80 @@ function buildPrompt(
 
   const counts = hashtagCounts[hashtagStyle] || hashtagCounts.medium;
 
+  // Build context based ONLY on user-provided text
   let contextInfo = "";
   if (starterText) {
-    contextInfo = `The user provided this starter text/topic: "${starterText}"`;
-  } else if (hasImage) {
-    contextInfo = `The user has an image for this post but no text description. Create engaging captions that work well with visual content.`;
+    contextInfo = `User-provided description/notes: "${starterText}"`;
   } else {
-    contextInfo = `The user has neither text nor image for this post (date: ${dateStr}). Create a generic engaging post, but note this needs more information.`;
+    contextInfo = `No description provided for this post (date: ${dateStr}). Create a generic engaging post and set needsInfo to true.`;
   }
 
   const brandContext = brandVoice
     ? `\n\nBrand Voice Guidelines:\n${brandVoice}`
     : "";
 
+  // Build regeneration context to avoid repeating previous outputs
+  let regenerateContext = "";
+  if (isRegenerate && previousOutputs) {
+    const avoidPhrases: string[] = [];
+    if (previousOutputs.igCaption) {
+      avoidPhrases.push(`Previous IG caption: "${previousOutputs.igCaption}"`);
+    }
+    if (previousOutputs.fbCaption) {
+      avoidPhrases.push(`Previous FB caption: "${previousOutputs.fbCaption}"`);
+    }
+    if (previousOutputs.igHashtags?.length) {
+      avoidPhrases.push(`Previous IG hashtags: ${previousOutputs.igHashtags.join(", ")}`);
+    }
+    if (previousOutputs.fbHashtags?.length) {
+      avoidPhrases.push(`Previous FB hashtags: ${previousOutputs.fbHashtags.join(", ")}`);
+    }
+
+    if (avoidPhrases.length > 0) {
+      regenerateContext = `
+
+REGENERATION REQUEST: This is a regeneration. You MUST produce a MATERIALLY DIFFERENT variation from the previous output while staying on-brand. Use different wording, sentence structure, and emoji placement. Choose different but equally relevant hashtags.
+
+AVOID REPEATING THESE (produce something fresh and different):
+${avoidPhrases.join("\n")}`;
+    }
+  }
+
   return `You are a social media copywriter creating Instagram and Facebook posts.
 
-${contextInfo}${brandContext}
+${contextInfo}${brandContext}${regenerateContext}
+
+CRITICAL RULES:
+- Use ONLY the user-provided text above. Nothing else.
+- Do NOT reference, describe, or assume anything about images.
+- Do NOT mention visual elements, food appearance, plating, colors, or what any photo might show.
+- If no description is provided, create generic engaging content and set needsInfo to true.
+- Do NOT invent dishes, events, or promotions not explicitly mentioned in the text.
 
 Create engaging, upbeat social media captions for both Instagram and Facebook.
 
 Requirements:
-- Instagram caption: 1-2 short paragraphs max, engaging and emoji-friendly
-- Facebook caption: Can be slightly longer but still concise, more conversational
-- Instagram hashtags: ${counts.ig} relevant tags
-- Facebook hashtags: ${counts.fb} relevant tags
-- All hashtags must NOT include the "#" symbol - just the word
+- Instagram caption: 1-3 short paragraphs, engaging and emoji-friendly
+- Facebook caption: Slightly longer and more informative, conversational tone
+- Instagram hashtags: ${counts.ig} relevant tags derived ONLY from the provided text
+- Facebook hashtags: ${counts.fb} relevant tags derived ONLY from the provided text
+- All hashtags MUST include the "#" symbol (e.g. #FallSpecial, #DinnerTime)
 - No spaces in hashtags (use camelCase if needed)
 - No mentions of competitors or other brands
 - Keep the tone upbeat and positive
-- If there's limited context, set confidence lower and needsInfo to true
+- If there's limited context, set confidence lower and needsInfo to true${isRegenerate ? "\n- IMPORTANT: Create a FRESH, DIFFERENT variation - do not repeat the previous captions or hashtags" : ""}
 
 Return ONLY valid JSON with this exact shape (no markdown, no code blocks, just JSON):
 {
-  "ig": { "caption": "...", "hashtags": ["tag1", "tag2"] },
-  "fb": { "caption": "...", "hashtags": ["tag1", "tag2"] },
+  "ig": { "caption": "...", "hashtags": ["#tag1", "#tag2"] },
+  "fb": { "caption": "...", "hashtags": ["#tag1", "#tag2"] },
   "confidence": 0.0,
   "needsInfo": false
 }
 
 confidence should be 0.0-1.0:
-- 0.9-1.0: Clear topic with good context
-- 0.7-0.89: Reasonable context but could be better
+- 0.9-1.0: Clear text context with good detail (topic, event, promo details)
+- 0.7-0.89: Reasonable context but could use more detail
 - 0.5-0.69: Limited context, made reasonable assumptions
 - 0.0-0.49: Very limited info, set needsInfo: true`;
 }
@@ -385,18 +450,31 @@ function parseAIResponse(content: string): AIOutputSchema | null {
       return null;
     }
 
+    // Normalize hashtags: ensure # prefix, trim, filter empty
+    const normalizeHashtag = (t: string): string => {
+      const cleaned = t.trim().replace(/\s+/g, "");
+      if (!cleaned) return "";
+      return cleaned.startsWith("#") ? cleaned : `#${cleaned}`;
+    };
+
+    const normalizeHashtagsArray = (tags: string[]): string[] => {
+      return tags
+        .map((t: string) => normalizeHashtag(t))
+        .filter((t: string) => t !== "" && t !== "#");
+    };
+
+    // Normalize then append global hashtags
+    const igHashtags = appendGlobalHashtags(normalizeHashtagsArray(parsed.ig.hashtags));
+    const fbHashtags = appendGlobalHashtags(normalizeHashtagsArray(parsed.fb.hashtags));
+
     return {
       ig: {
         caption: parsed.ig.caption,
-        hashtags: parsed.ig.hashtags.map((t: string) =>
-          t.replace(/^#/, "").replace(/\s+/g, "")
-        ),
+        hashtags: igHashtags,
       },
       fb: {
         caption: parsed.fb.caption,
-        hashtags: parsed.fb.hashtags.map((t: string) =>
-          t.replace(/^#/, "").replace(/\s+/g, "")
-        ),
+        hashtags: fbHashtags,
       },
       confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
       needsInfo: Boolean(parsed.needsInfo),
@@ -475,20 +553,33 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
     const brandVoice = workspaceData.settings?.ai?.brandVoice || "";
     const hashtagStyle = workspaceData.settings?.ai?.hashtagStyle || "medium";
 
-    // 7. Build the prompt
-    const starterText = postData.starterText;
-    const hasImage = !!postData.imageAssetId;
-    const prompt = buildPrompt(starterText, hasImage, brandVoice, hashtagStyle, dateId);
-
-    // 8. Get OpenAI API key
+    // 7. Get OpenAI client
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       throw new HttpsError("failed-precondition", "OpenAI API key not configured");
     }
-
     const openai = new OpenAI({ apiKey });
 
-    // 9. Call OpenAI
+    // 8. Build the prompt using ONLY user-provided text (images are completely ignored)
+    const starterText = postData.starterText;
+
+    // For regeneration, get previous outputs from request or current post data
+    let prevOutputs: PreviousOutputs | undefined;
+    if (regenerate) {
+      prevOutputs = request.data.previousOutputs || {
+        igCaption: postData.ai?.ig?.caption,
+        igHashtags: postData.ai?.ig?.hashtags,
+        fbCaption: postData.ai?.fb?.caption,
+        fbHashtags: postData.ai?.fb?.hashtags,
+      };
+    }
+
+    const prompt = buildPrompt(starterText, brandVoice, hashtagStyle, dateId, regenerate, prevOutputs);
+
+    // Generate unique request ID for cache-busting and prompt variation
+    const requestId = request.data.requestId || randomUUID();
+
+    // 9. Call OpenAI for caption generation (text-only, no image interpretation)
     let aiOutput: AIOutputSchema | null = null;
     let attempts = 0;
     const maxAttempts = 2;
@@ -496,19 +587,25 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
     while (!aiOutput && attempts < maxAttempts) {
       attempts++;
       try {
+        // Include requestId as a nonce to ensure each request is unique
+        const nonceMessage = `[Request ID: ${requestId}${regenerate ? " - REGENERATION" : ""}]`;
+
+        const promptText = attempts === 1 ? prompt : `${prompt}\n\nPrevious response was invalid JSON. Please return ONLY valid JSON.`;
+
         const completion = await openai.chat.completions.create({
           model: MODEL_NAME,
           messages: [
             {
               role: "system",
-              content: "You are a social media copywriter. Return ONLY valid JSON, no other text.",
+              content: `You are a social media copywriter. Use ONLY the user-provided text description. Images are completely ignored - do NOT reference, describe, or assume anything about images. Do NOT mention visual elements, food appearance, or photos. Return ONLY valid JSON. ${nonceMessage}`,
             },
             {
               role: "user",
-              content: attempts === 1 ? prompt : `${prompt}\n\nPrevious response was invalid JSON. Please return ONLY valid JSON.`,
+              content: promptText,
             },
           ],
-          temperature: 0.7,
+          temperature: 0.8, // Higher temperature for more variation
+          top_p: 0.95, // Enable nucleus sampling for diversity
           max_tokens: 1000,
         });
 

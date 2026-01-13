@@ -82,6 +82,58 @@ export default function ReviewPage() {
         else setSelectedIds(new Set());
     };
 
+    const handleRegenerateSingle = useCallback(async (dateId: string, previousOutputs?: {
+        igCaption?: string;
+        igHashtags?: string[];
+        fbCaption?: string;
+        fbHashtags?: string[];
+    }) => {
+        if (!user || !workspaceId) return;
+
+        setGeneratingIds(prev => new Set(prev).add(dateId));
+
+        const generatePostCopy = httpsCallable<
+            {
+                workspaceId: string;
+                dateId: string;
+                regenerate: boolean;
+                previousOutputs?: {
+                    igCaption?: string;
+                    igHashtags?: string[];
+                    fbCaption?: string;
+                    fbHashtags?: string[];
+                };
+                requestId?: string;
+            },
+            GeneratePostCopyResponse
+        >(functions, "generatePostCopy");
+
+        try {
+            const result = await generatePostCopy({
+                workspaceId,
+                dateId,
+                regenerate: true,
+                previousOutputs,
+                requestId: crypto.randomUUID(),
+            });
+
+            if (result.data.status === "generated") {
+                showToast('success', `Regenerated ${dateId}`);
+            } else if (result.data.status === "error") {
+                showToast('error', result.data.message || `Failed to regenerate ${dateId}`);
+            }
+        } catch (err) {
+            console.error(`Regenerate error for ${dateId}:`, err);
+            showToast('error', `Failed to regenerate ${dateId}`);
+        } finally {
+            setGeneratingIds(prev => {
+                const next = new Set(prev);
+                next.delete(dateId);
+                return next;
+            });
+        }
+    }, [user, workspaceId, showToast]);
+
     const handleGenerateBatch = async () => {
         if (!user || !workspaceId) return;
 
@@ -162,6 +214,11 @@ export default function ReviewPage() {
         }
     };
 
+    // Check if a post has a valid image (required for Buffer)
+    const hasValidImage = (post: PostDay): boolean => {
+        return !!post.imageAssetId;
+    };
+
     const handleSendToBuffer = async (onlySelected: boolean) => {
         if (!user || !workspaceId) return;
         const targets = onlySelected
@@ -170,11 +227,25 @@ export default function ReviewPage() {
 
         if (targets.length === 0) return;
 
+        // Check if ALL selected posts are missing images
+        const postsWithImages = targets.filter(p => hasValidImage(p));
+        if (postsWithImages.length === 0) {
+            showToast('warn', 'No posts were sent because images are missing.');
+            return;
+        }
+
         setIsSending(true);
         let successCount = 0;
-        let failCount = 0;
+        let skippedMissingImage = 0;
+        let skippedPastDate = 0;
 
         for (const post of targets) {
+            // Hard rule: skip posts without images
+            if (!hasValidImage(post)) {
+                skippedMissingImage++;
+                continue;
+            }
+
             const result = await sendToBufferStub(post);
             if (result.success) {
                 const docRef = doc(db, "workspaces", workspaceId, "post_days", post.date);
@@ -185,14 +256,21 @@ export default function ReviewPage() {
                 });
                 successCount++;
             } else {
-                failCount++;
+                // Past date or other failure from stub
+                skippedPastDate++;
             }
         }
 
         setIsSending(false);
 
-        if (failCount > 0) {
-            showToast('warn', `Sent ${successCount} posts. ${failCount} skipped (past date).`);
+        // Build toast summary
+        const parts: string[] = [];
+        if (successCount > 0) parts.push(`Sent ${successCount}`);
+        if (skippedMissingImage > 0) parts.push(`Skipped ${skippedMissingImage} (missing image)`);
+        if (skippedPastDate > 0) parts.push(`Skipped ${skippedPastDate} (past date)`);
+
+        if (skippedMissingImage > 0 || skippedPastDate > 0) {
+            showToast('warn', parts.join(' • '));
         } else {
             showToast('success', `Successfully sent ${successCount} post${successCount !== 1 ? 's' : ''} to Buffer.`);
         }
@@ -267,6 +345,11 @@ export default function ReviewPage() {
                 }
             />
 
+            {/* AI behavior note */}
+            <p className="text-xs text-gray-400 mb-3">
+                AI generates captions from your description only. Images are ignored.
+            </p>
+
             <DashboardCard noPadding>
                 {loading ? (
                     <div className="py-16 text-center">
@@ -280,6 +363,7 @@ export default function ReviewPage() {
                         generatingIds={generatingIds}
                         onSelectRow={onSelectRow}
                         onSelectAll={onSelectAll}
+                        onRegenerate={handleRegenerateSingle}
                     />
                 )}
             </DashboardCard>

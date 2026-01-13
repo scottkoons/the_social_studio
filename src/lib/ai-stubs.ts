@@ -24,13 +24,13 @@ export async function generateAiStub(post: Partial<PostDay>): Promise<Partial<Po
     }
 
     const igHashtags = [
-        "socialmedia", "scheduling", "marketing", "contentcreator", "studio",
-        "planning", "productivity", "workflow", "digitalmarketing", "growth",
-        "innovation", "creativity", "tools", "automation", "efficiency"
+        "#socialmedia", "#scheduling", "#marketing", "#contentcreator", "#studio",
+        "#planning", "#productivity", "#workflow", "#digitalmarketing", "#growth",
+        "#innovation", "#creativity", "#tools", "#automation", "#efficiency"
     ].slice(0, Math.floor(Math.random() * 8) + 12);
 
     const fbHashtags = [
-        "TheSocialStudio", "PlanningTools", "SocialMediaManagement"
+        "#TheSocialStudio", "#PlanningTools", "#SocialMediaManagement"
     ].slice(0, Math.floor(Math.random() * 4) + 3);
 
     const aiData: PostDayAI = {

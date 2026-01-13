@@ -7,8 +7,9 @@ import { PostDay } from "@/lib/types";
 import { storage, db } from "@/lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { doc, setDoc, updateDoc, getDoc, serverTimestamp } from "firebase/firestore";
-import { Image as ImageIcon, X, Upload } from "lucide-react";
+import { Image as ImageIcon, X, Upload, Maximize2 } from "lucide-react";
 import Image from "next/image";
+import ImagePreviewModal from "./ui/ImagePreviewModal";
 
 interface ImageUploadProps {
     post: PostDay;
@@ -19,6 +20,8 @@ interface ImageUploadProps {
 export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageUploadProps) {
     const { user, workspaceId } = useAuth();
     const [asset, setAsset] = useState<any>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [showPreviewModal, setShowPreviewModal] = useState(false);
 
     useEffect(() => {
         const fetchAsset = async () => {
@@ -103,31 +106,55 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
     // Image preview with asset
     if (asset) {
         return (
-            <div className="relative h-16 w-28 bg-gray-100 rounded-lg overflow-hidden group/img border border-gray-200">
-                {/* Fallback icon while loading */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                    <ImageIcon className="text-gray-300" size={20} />
+            <>
+                <div className="relative h-16 w-28 bg-gray-100 rounded-lg overflow-hidden group/img border border-gray-200">
+                    {/* Fallback icon while loading */}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <ImageIcon className="text-gray-300" size={20} />
+                    </div>
+
+                    {/* Actual image with object-contain to preserve aspect ratio */}
+                    <AssetPreview storagePath={asset.storagePath} onUrlLoaded={setPreviewUrl} />
+
+                    {/* Hover overlay with buttons */}
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+                        {previewUrl && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowPreviewModal(true);
+                                }}
+                                className="p-1.5 bg-white/20 hover:bg-white/40 text-white rounded-full transition-colors"
+                                title="View full image"
+                            >
+                                <Maximize2 size={14} />
+                            </button>
+                        )}
+                        <button
+                            onClick={removeImage}
+                            className="p-1.5 bg-white/20 hover:bg-white/40 text-white rounded-full transition-colors"
+                            title="Remove image"
+                        >
+                            <X size={14} />
+                        </button>
+                    </div>
+
+                    {/* Filename badge */}
+                    <div className="absolute bottom-0.5 right-0.5 bg-white/90 px-1 py-0.5 rounded text-[8px] font-medium text-gray-600 max-w-[100px] truncate">
+                        {asset.fileName}
+                    </div>
                 </div>
 
-                {/* Actual image with object-contain to preserve aspect ratio */}
-                <AssetPreview storagePath={asset.storagePath} />
-
-                {/* Hover overlay with remove button */}
-                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
-                    <button
-                        onClick={removeImage}
-                        className="p-1.5 bg-white/20 hover:bg-white/40 text-white rounded-full transition-colors"
-                        title="Remove image"
-                    >
-                        <X size={14} />
-                    </button>
-                </div>
-
-                {/* Filename badge */}
-                <div className="absolute bottom-0.5 right-0.5 bg-white/90 px-1 py-0.5 rounded text-[8px] font-medium text-gray-600 max-w-[100px] truncate">
-                    {asset.fileName}
-                </div>
-            </div>
+                {/* Preview modal */}
+                {previewUrl && (
+                    <ImagePreviewModal
+                        isOpen={showPreviewModal}
+                        onClose={() => setShowPreviewModal(false)}
+                        imageUrl={previewUrl}
+                        title={`${post.date} - ${asset.fileName}`}
+                    />
+                )}
+            </>
         );
     }
 
@@ -153,7 +180,12 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
     );
 }
 
-function AssetPreview({ storagePath }: { storagePath: string }) {
+interface AssetPreviewProps {
+    storagePath: string;
+    onUrlLoaded?: (url: string) => void;
+}
+
+function AssetPreview({ storagePath, onUrlLoaded }: AssetPreviewProps) {
     const [url, setUrl] = useState<string | null>(null);
     const [error, setError] = useState(false);
 
@@ -162,13 +194,14 @@ function AssetPreview({ storagePath }: { storagePath: string }) {
             try {
                 const downloadUrl = await getDownloadURL(ref(storage, storagePath));
                 setUrl(downloadUrl);
+                onUrlLoaded?.(downloadUrl);
             } catch (err) {
                 console.error("Preview error:", err);
                 setError(true);
             }
         };
         getUrl();
-    }, [storagePath]);
+    }, [storagePath, onUrlLoaded]);
 
     if (error || !url) return null;
 
