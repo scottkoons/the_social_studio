@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, setDoc, deleteDoc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { isPastOrTodayInDenver } from "@/lib/utils";
+import { isPastOrTodayInDenver, stripUndefined } from "@/lib/utils";
 import { PostDay } from "@/lib/types";
 import ImageUpload from "./ImageUpload";
 import StatusPill from "./ui/StatusPill";
@@ -105,12 +105,12 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
                 }
             }
 
-            // Copy data to new doc (preserving imageAssetId)
-            await setDoc(newDocRef, {
+            // Copy data to new doc (preserving imageAssetId) - stripUndefined to avoid Firestore errors
+            await setDoc(newDocRef, stripUndefined({
                 ...post,
                 date: newDate,
                 updatedAt: serverTimestamp(),
-            });
+            }));
 
             // Delete old doc
             await deleteDoc(oldDocRef);

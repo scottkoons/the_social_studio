@@ -130,3 +130,30 @@ export function appendGlobalHashtags(hashtags: string[]): string[] {
 
     return result;
 }
+
+/**
+ * Deep-removes undefined values from an object for safe Firestore writes.
+ * Firestore throws "Unsupported field value: undefined" if any field is undefined.
+ * This function recursively strips undefined from nested objects.
+ */
+export function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
+    const result: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(obj)) {
+        if (value === undefined) {
+            continue;
+        }
+        if (value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date)) {
+            // Check if it's a Firestore FieldValue (has _methodName property) - don't recurse into those
+            if ("_methodName" in value) {
+                result[key] = value;
+            } else {
+                result[key] = stripUndefined(value as Record<string, unknown>);
+            }
+        } else {
+            result[key] = value;
+        }
+    }
+
+    return result as T;
+}

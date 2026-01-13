@@ -5,11 +5,11 @@ import { X, Trash2, Copy, Upload, Loader2, Sparkles } from "lucide-react";
 import Image from "next/image";
 import { PostDay } from "@/lib/types";
 import { db, storage, functions } from "@/lib/firebase";
-import { doc, updateDoc, deleteDoc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, setDoc, getDoc, serverTimestamp, deleteField } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useDropzone } from "react-dropzone";
-import { normalizeHashtagsArray, appendGlobalHashtags } from "@/lib/utils";
+import { normalizeHashtagsArray, appendGlobalHashtags, stripUndefined } from "@/lib/utils";
 
 interface GeneratePostCopyResponse {
     success: boolean;
@@ -130,7 +130,7 @@ export default function CalendarEditModal({
             }
 
             // Handle image upload if new file
-            let newAssetId = post.imageAssetId;
+            let newAssetId: string | null = post.imageAssetId || null;
             if (newImageFile) {
                 const storagePath = `assets/${workspaceId}/${date}/${newImageFile.name}`;
                 const storageRef = ref(storage, storagePath);
@@ -150,7 +150,7 @@ export default function CalendarEditModal({
                 await setDoc(doc(db, "workspaces", workspaceId, "assets", assetId), assetData);
                 newAssetId = assetId;
             } else if (removeImage) {
-                newAssetId = undefined;
+                newAssetId = null;
             }
 
             // Parse and normalize hashtags
@@ -161,13 +161,13 @@ export default function CalendarEditModal({
                 normalizeHashtagsArray(fbHashtags.split(","))
             );
 
-            // Build update data
-            const updateData: any = {
+            // Build update data - use deleteField() for removed image
+            const updateData: Record<string, unknown> = {
                 "ai.ig.caption": igCaption,
                 "ai.ig.hashtags": parsedIgHashtags,
                 "ai.fb.caption": fbCaption,
                 "ai.fb.hashtags": parsedFbHashtags,
-                imageAssetId: newAssetId,
+                imageAssetId: removeImage ? deleteField() : newAssetId,
                 status: post.status === "sent" ? "sent" : "edited",
                 updatedAt: serverTimestamp(),
             };
@@ -176,11 +176,11 @@ export default function CalendarEditModal({
             if (date !== post.date) {
                 const targetDocRef = doc(db, "workspaces", workspaceId, "post_days", date);
 
-                // Create new doc at target date
-                await setDoc(targetDocRef, {
+                // Create new doc at target date - use stripUndefined to remove undefined values
+                const newDocData = stripUndefined({
                     ...post,
                     date,
-                    "ai": {
+                    ai: {
                         ig: { caption: igCaption, hashtags: parsedIgHashtags },
                         fb: { caption: fbCaption, hashtags: parsedFbHashtags },
                         meta: post.ai?.meta,
@@ -189,6 +189,7 @@ export default function CalendarEditModal({
                     status: post.status === "sent" ? "sent" : "edited",
                     updatedAt: serverTimestamp(),
                 });
+                await setDoc(targetDocRef, newDocData);
 
                 // Delete old doc
                 await deleteDoc(docRef);
@@ -242,8 +243,8 @@ export default function CalendarEditModal({
                 normalizeHashtagsArray(fbHashtags.split(","))
             );
 
-            // Create duplicate post
-            await setDoc(targetDocRef, {
+            // Create duplicate post - use stripUndefined to remove undefined values
+            const duplicateData = stripUndefined({
                 date: duplicateDate,
                 starterText: post.starterText,
                 imageAssetId: post.imageAssetId,
@@ -256,6 +257,7 @@ export default function CalendarEditModal({
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             });
+            await setDoc(targetDocRef, duplicateData);
 
             setShowDuplicateModal(false);
             setDuplicateDate("");

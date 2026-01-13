@@ -11,7 +11,7 @@ import DashboardCard from "@/components/ui/DashboardCard";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { format, startOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, isSameMonth } from "date-fns";
 import { PostDay } from "@/lib/types";
-import { getTodayInDenver } from "@/lib/utils";
+import { getTodayInDenver, stripUndefined } from "@/lib/utils";
 import { useWorkspaceUiSettings } from "@/hooks/useWorkspaceUiSettings";
 import Image from "next/image";
 import CalendarEditModal from "@/components/CalendarEditModal";
@@ -110,12 +110,12 @@ export default function CalendarPage() {
             const targetDocRef = doc(db, "workspaces", workspaceId, "post_days", targetDate);
 
             // If overwriting, the target doc will be replaced
-            // Copy source post data to target date
-            await setDoc(targetDocRef, {
+            // Copy source post data to target date - stripUndefined to avoid Firestore errors
+            await setDoc(targetDocRef, stripUndefined({
                 ...sourcePost,
                 date: targetDate,
                 updatedAt: serverTimestamp(),
-            });
+            }));
 
             // Delete source post
             await deleteDoc(sourceDocRef);
@@ -232,12 +232,12 @@ export default function CalendarPage() {
             const sourceDocRef = doc(db, "workspaces", workspaceId, "post_days", editDateConflict.sourceDate);
             const targetDocRef = doc(db, "workspaces", workspaceId, "post_days", editDateConflict.targetDate);
 
-            // Move post to target date (overwrites existing)
-            await setDoc(targetDocRef, {
+            // Move post to target date (overwrites existing) - stripUndefined to avoid Firestore errors
+            await setDoc(targetDocRef, stripUndefined({
                 ...sourcePost,
                 date: editDateConflict.targetDate,
                 updatedAt: serverTimestamp(),
-            });
+            }));
 
             // Delete source doc
             await deleteDoc(sourceDocRef);
