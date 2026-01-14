@@ -4,6 +4,86 @@ import { parseISO, isBefore, isToday, isAfter } from "date-fns";
 export const DENVER_TZ = "America/Denver";
 
 /**
+ * Parses a date string from CSV in either format:
+ * - YYYY-MM-DD (ISO format)
+ * - MM/DD/YY (Buffer-style format)
+ *
+ * Returns normalized YYYY-MM-DD string or null if invalid.
+ * Uses strict parsing - no Date constructor guessing.
+ */
+export function parseCsvDate(input: string): string | null {
+    if (!input || typeof input !== "string") {
+        return null;
+    }
+
+    const trimmed = input.trim();
+    if (!trimmed) {
+        return null;
+    }
+
+    // Try ISO format: YYYY-MM-DD
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+        const [, year, month, day] = isoMatch;
+        const y = parseInt(year, 10);
+        const m = parseInt(month, 10);
+        const d = parseInt(day, 10);
+
+        // Validate ranges
+        if (m < 1 || m > 12 || d < 1 || d > 31) {
+            return null;
+        }
+
+        // Validate it's a real date
+        const testDate = new Date(y, m - 1, d);
+        if (
+            testDate.getFullYear() !== y ||
+            testDate.getMonth() !== m - 1 ||
+            testDate.getDate() !== d
+        ) {
+            return null;
+        }
+
+        return trimmed;
+    }
+
+    // Try Buffer format: MM/DD/YY or M/D/YY
+    const bufferMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+    if (bufferMatch) {
+        const [, monthStr, dayStr, yearStr] = bufferMatch;
+        const m = parseInt(monthStr, 10);
+        const d = parseInt(dayStr, 10);
+        const yy = parseInt(yearStr, 10);
+
+        // Convert 2-digit year to 4-digit (assume 20xx for all values)
+        const y = 2000 + yy;
+
+        // Validate ranges
+        if (m < 1 || m > 12 || d < 1 || d > 31) {
+            return null;
+        }
+
+        // Validate it's a real date
+        const testDate = new Date(y, m - 1, d);
+        if (
+            testDate.getFullYear() !== y ||
+            testDate.getMonth() !== m - 1 ||
+            testDate.getDate() !== d
+        ) {
+            return null;
+        }
+
+        // Return normalized ISO format
+        const mm = String(m).padStart(2, "0");
+        const dd = String(d).padStart(2, "0");
+        return `${y}-${mm}-${dd}`;
+    }
+
+    // No valid format matched
+    return null;
+}
+
+/**
  * Global hashtags that are automatically appended to all generated posts.
  */
 export const GLOBAL_HASHTAGS = [

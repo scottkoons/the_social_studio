@@ -24,6 +24,8 @@ export interface PostDay {
     starterText?: string;
     imageAssetId?: string;
     imageUrl?: string; // Direct download URL (set by importImageFromUrl)
+    postingTime?: string; // "HH:MM" 24-hour, Denver local time
+    postingTimeSource?: "auto" | "manual"; // How the posting time was set
     status: "input" | "generated" | "edited" | "sent" | "error";
     ai?: PostDayAI;
     buffer?: {

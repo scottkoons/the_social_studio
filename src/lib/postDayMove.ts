@@ -2,6 +2,7 @@ import { db } from "@/lib/firebase";
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { stripUndefined } from "@/lib/utils";
 import { PostDay } from "@/lib/types";
+import { generatePostingTimeForDateChange } from "@/lib/postingTime";
 
 export interface MovePostDayOptions {
     overwrite?: boolean;
@@ -72,10 +73,14 @@ export async function movePostDay(
 
         // Build the new document payload
         // Copy all fields from source, update date and timestamp
+        // Recalculate posting time for new date (re-roll rule)
         // Use stripUndefined to ensure no undefined values reach Firestore
+        const newPostingTime = generatePostingTimeForDateChange(toDate);
         const newDocData = stripUndefined({
             ...sourceData,
             date: toDate,
+            postingTime: newPostingTime,
+            postingTimeSource: "auto" as const,
             updatedAt: serverTimestamp(),
         });
 

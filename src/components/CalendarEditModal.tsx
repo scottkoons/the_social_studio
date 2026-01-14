@@ -10,6 +10,7 @@ import { httpsCallable } from "firebase/functions";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useDropzone } from "react-dropzone";
 import { normalizeHashtagsArray, appendGlobalHashtags, stripUndefined } from "@/lib/utils";
+import { generatePostingTimeForDateChange, roundToNearest5Min, randomTimeInWindow5Min, getWindowDescription } from "@/lib/postingTime";
 
 interface GeneratePostCopyResponse {
     success: boolean;
@@ -40,6 +41,10 @@ export default function CalendarEditModal({
 }: CalendarEditModalProps) {
     // Local state for editing
     const [date, setDate] = useState(post.date);
+    const [postingTime, setPostingTime] = useState(
+        post.postingTime || randomTimeInWindow5Min(post.date, post.date)
+    );
+    const [timeWasManuallyEdited, setTimeWasManuallyEdited] = useState(false);
     const [igCaption, setIgCaption] = useState(post.ai?.ig?.caption || "");
     const [igHashtags, setIgHashtags] = useState(post.ai?.ig?.hashtags?.join(", ") || "");
     const [fbCaption, setFbCaption] = useState(post.ai?.fb?.caption || "");
@@ -60,6 +65,8 @@ export default function CalendarEditModal({
     // Reset state when post changes
     useEffect(() => {
         setDate(post.date);
+        setPostingTime(post.postingTime || randomTimeInWindow5Min(post.date, post.date));
+        setTimeWasManuallyEdited(false);
         setIgCaption(post.ai?.ig?.caption || "");
         setIgHashtags(post.ai?.ig?.hashtags?.join(", ") || "");
         setFbCaption(post.ai?.fb?.caption || "");
@@ -108,6 +115,22 @@ export default function CalendarEditModal({
         setRemoveImage(true);
         setNewImageFile(null);
         setLocalImageUrl(null);
+    };
+
+    // Handle date change - recalculate posting time
+    const handleDateChange = (newDate: string) => {
+        setDate(newDate);
+        // Re-roll posting time for new date (even if previously manually edited)
+        const newTime = generatePostingTimeForDateChange(newDate);
+        setPostingTime(newTime);
+        setTimeWasManuallyEdited(false);
+    };
+
+    // Handle time change - round to nearest 5 min and mark as manual
+    const handleTimeChange = (newTime: string) => {
+        const rounded = roundToNearest5Min(newTime);
+        setPostingTime(rounded);
+        setTimeWasManuallyEdited(true);
     };
 
     const handleSave = async () => {
@@ -161,6 +184,9 @@ export default function CalendarEditModal({
                 normalizeHashtagsArray(fbHashtags.split(","))
             );
 
+            // Determine posting time source
+            const postingTimeSource = timeWasManuallyEdited ? "manual" : (post.postingTimeSource || "auto");
+
             // Build update data - use deleteField() for removed image
             const updateData: Record<string, unknown> = {
                 "ai.ig.caption": igCaption,
@@ -168,6 +194,8 @@ export default function CalendarEditModal({
                 "ai.fb.caption": fbCaption,
                 "ai.fb.hashtags": parsedFbHashtags,
                 imageAssetId: removeImage ? deleteField() : newAssetId,
+                postingTime,
+                postingTimeSource,
                 status: post.status === "sent" ? "sent" : "edited",
                 updatedAt: serverTimestamp(),
             };
@@ -177,9 +205,12 @@ export default function CalendarEditModal({
                 const targetDocRef = doc(db, "workspaces", workspaceId, "post_days", date);
 
                 // Create new doc at target date - use stripUndefined to remove undefined values
+                // Note: postingTime was already recalculated when date was changed
                 const newDocData = stripUndefined({
                     ...post,
                     date,
+                    postingTime,
+                    postingTimeSource: "auto" as const, // Date change always resets to auto
                     ai: {
                         ig: { caption: igCaption, hashtags: parsedIgHashtags },
                         fb: { caption: fbCaption, hashtags: parsedFbHashtags },
@@ -243,11 +274,16 @@ export default function CalendarEditModal({
                 normalizeHashtagsArray(fbHashtags.split(","))
             );
 
+            // Generate posting time for the duplicate date
+            const duplicatePostingTime = randomTimeInWindow5Min(duplicateDate, duplicateDate);
+
             // Create duplicate post - use stripUndefined to remove undefined values
             const duplicateData = stripUndefined({
                 date: duplicateDate,
                 starterText: post.starterText,
                 imageAssetId: post.imageAssetId,
+                postingTime: duplicatePostingTime,
+                postingTimeSource: "auto" as const,
                 ai: {
                     ig: { caption: igCaption, hashtags: parsedIgHashtags },
                     fb: { caption: fbCaption, hashtags: parsedFbHashtags },
@@ -412,17 +448,34 @@ export default function CalendarEditModal({
                         )}
                     </div>
 
-                    {/* Date */}
-                    <div>
-                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                            Date
-                        </label>
-                        <input
-                            type="date"
-                            value={date}
-                            onChange={(e) => setDate(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
-                        />
+                    {/* Date and Time */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                                Date
+                            </label>
+                            <input
+                                type="date"
+                                value={date}
+                                onChange={(e) => handleDateChange(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                                Posting Time
+                            </label>
+                            <input
+                                type="time"
+                                value={postingTime}
+                                onChange={(e) => handleTimeChange(e.target.value)}
+                                step="300"
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1">
+                                {getWindowDescription(date)}
+                            </p>
+                        </div>
                     </div>
 
                     {/* Regenerate AI button */}

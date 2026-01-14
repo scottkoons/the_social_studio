@@ -13,6 +13,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { format, startOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, isSameMonth } from "date-fns";
 import { PostDay } from "@/lib/types";
 import { getTodayInDenver } from "@/lib/utils";
+import { formatTimeForDisplay, randomTimeInWindow5Min } from "@/lib/postingTime";
 import { movePostDay } from "@/lib/postDayMove";
 import { useWorkspaceUiSettings } from "@/hooks/useWorkspaceUiSettings";
 import Image from "next/image";
@@ -498,8 +499,13 @@ function DayCell({
                         </div>
                     )}
 
-                    {/* Status indicator */}
-                    <StatusDot status={post.status} wouldBeSkipped={wouldBeSkipped} />
+                    {/* Status indicator and time */}
+                    <div className="flex items-center justify-between gap-1">
+                        <StatusDot status={post.status} wouldBeSkipped={wouldBeSkipped} />
+                        <span className="text-[9px] text-gray-400">
+                            {formatTimeForDisplay(post.postingTime || randomTimeInWindow5Min(dateStr, dateStr))}
+                        </span>
+                    </div>
                 </div>
             )}
 

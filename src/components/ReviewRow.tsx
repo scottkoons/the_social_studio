@@ -11,6 +11,7 @@ import { Loader2, RefreshCw, Trash2, AlertCircle } from "lucide-react";
 import { isPastOrTodayInDenver, normalizeHashtagsArray, appendGlobalHashtags } from "@/lib/utils";
 import { movePostDay } from "@/lib/postDayMove";
 import { useAuth } from "@/context/AuthContext";
+import { formatTimeForDisplay, randomTimeInWindow5Min } from "@/lib/postingTime";
 
 interface ReviewRowProps {
     post: PostDay;
@@ -177,6 +178,9 @@ export default function ReviewRow({ post, isSelected, isGenerating, onSelect, on
                         onChange={(e) => handleDateChange(e.target.value)}
                         className="font-mono text-sm font-medium text-gray-900 border-none bg-transparent focus:ring-0 p-0 cursor-pointer w-32"
                     />
+                    <span className="text-xs text-gray-500">
+                        {formatTimeForDisplay(post.postingTime || randomTimeInWindow5Min(post.date, post.date))}
+                    </span>
                     <div className="flex flex-wrap gap-1">
                         {isPast && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-red-100 text-red-700">

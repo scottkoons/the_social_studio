@@ -7,6 +7,8 @@ import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { FileDown, AlertCircle, Check, X, Image, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { parseCsvDate } from "@/lib/utils";
+import { randomTimeInWindow5Min } from "@/lib/postingTime";
 
 // ============================================================================
 // Image URL Validation Helpers (Lightweight - no network requests)
@@ -114,6 +116,12 @@ interface ImageImportError {
     type: 'skipped' | 'failed';
 }
 
+interface DateParseError {
+    rowIndex: number;
+    rawDate: string;
+    reason: string;
+}
+
 export default function CSVImport() {
     const { user, workspaceId, workspaceLoading } = useAuth();
     const [isImporting, setIsImporting] = useState(false);
@@ -144,10 +152,15 @@ export default function CSVImport() {
         created: 0,
         overwritten: 0,
         skipped: 0,
+        invalidDates: 0,
         imagesImported: 0,
         imagesSkipped: 0,
         imagesFailed: 0
     });
+
+    // Track date parse errors for display
+    const dateErrorsRef = useRef<DateParseError[]>([]);
+    const [dateErrors, setDateErrors] = useState<DateParseError[]>([]);
 
     // Track rows that need image import
     const rowsWithImagesRef = useRef<ParsedRow[]>([]);
@@ -170,12 +183,15 @@ export default function CSVImport() {
             created: 0,
             overwritten: 0,
             skipped: 0,
+            invalidDates: 0,
             imagesImported: 0,
             imagesSkipped: 0,
             imagesFailed: 0
         };
         rowsWithImagesRef.current = [];
         imageErrorsRef.current = [];
+        dateErrorsRef.current = [];
+        setDateErrors([]);
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -201,12 +217,15 @@ export default function CSVImport() {
             created: 0,
             overwritten: 0,
             skipped: 0,
+            invalidDates: 0,
             imagesImported: 0,
             imagesSkipped: 0,
             imagesFailed: 0
         };
         rowsWithImagesRef.current = [];
         imageErrorsRef.current = [];
+        dateErrorsRef.current = [];
+        setDateErrors([]);
 
         // Capture workspaceId at parse time to use in async callback
         const currentWorkspaceId = workspaceId;
@@ -228,13 +247,27 @@ export default function CSVImport() {
                 const duplicateRows: DuplicateInfo[] = [];
 
                 // First pass: check all rows for duplicates
-                for (const row of data) {
-                    const date = row.date || row.Date;
+                for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
+                    const row = data[rowIndex];
+                    const rawDate = row.date || row.Date || "";
                     const starterText = row.starterText || row.StarterText || "";
                     const imageUrl = row.imageUrl || row.ImageUrl || row.imageURL || "";
 
-                    if (!date) {
+                    // Skip empty date
+                    if (!rawDate || !rawDate.trim()) {
                         countersRef.current.skipped++;
+                        continue;
+                    }
+
+                    // Parse and normalize date (accepts YYYY-MM-DD or MM/DD/YY)
+                    const date = parseCsvDate(rawDate);
+                    if (!date) {
+                        countersRef.current.invalidDates++;
+                        dateErrorsRef.current.push({
+                            rowIndex: rowIndex + 2, // +2 for 1-indexed + header row
+                            rawDate: rawDate.trim(),
+                            reason: `Invalid date format. Use YYYY-MM-DD or MM/DD/YY.`
+                        });
                         continue;
                     }
 
@@ -325,9 +358,13 @@ export default function CSVImport() {
         for (const row of rows) {
             try {
                 const docRef = doc(db, "workspaces", workspaceId, "post_days", row.date);
+                // Generate posting time using date as seed for stability
+                const postingTime = randomTimeInWindow5Min(row.date, row.date);
                 await setDoc(docRef, {
                     date: row.date,
                     starterText: row.starterText,
+                    postingTime,
+                    postingTimeSource: "auto",
                     status: "input",
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
@@ -573,12 +610,13 @@ export default function CSVImport() {
     };
 
     const finishImport = (inputElement: HTMLInputElement | null) => {
-        const { created, overwritten, skipped, imagesImported, imagesSkipped, imagesFailed } = countersRef.current;
+        const { created, overwritten, skipped, invalidDates, imagesImported, imagesSkipped, imagesFailed } = countersRef.current;
 
         const parts: string[] = [];
         if (created > 0) parts.push(`${created} created`);
         if (overwritten > 0) parts.push(`${overwritten} overwritten`);
         if (skipped > 0) parts.push(`${skipped} skipped`);
+        if (invalidDates > 0) parts.push(`${invalidDates} invalid date${invalidDates !== 1 ? 's' : ''}`);
 
         // Image summary
         if (imagesImported > 0) parts.push(`${imagesImported} images imported`);
@@ -587,15 +625,17 @@ export default function CSVImport() {
 
         // Determine status type
         let statusType: 'success' | 'warn' | 'error' = 'success';
-        if (imagesFailed > 0 && imagesImported === 0) {
+        if (imagesFailed > 0 && imagesImported === 0 && created === 0 && overwritten === 0) {
             statusType = 'error';
-        } else if (imagesSkipped > 0 || imagesFailed > 0) {
+        } else if (imagesSkipped > 0 || imagesFailed > 0 || invalidDates > 0) {
             statusType = 'warn';
         }
 
         // Copy errors to state before partial reset
         const errors = [...imageErrorsRef.current];
         setImageErrors(errors);
+        const dateErrs = [...dateErrorsRef.current];
+        setDateErrors(dateErrs);
 
         setStatus({
             type: statusType,
@@ -664,21 +704,40 @@ export default function CSVImport() {
                     </div>
 
                     {/* Expandable error details */}
-                    {imageErrors.length > 0 && (
+                    {(imageErrors.length > 0 || dateErrors.length > 0) && (
                         <div className="mt-2">
                             <button
                                 onClick={() => setShowDetails(!showDetails)}
                                 className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider opacity-70 hover:opacity-100"
                             >
                                 {showDetails ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                                {showDetails ? 'Hide' : 'Show'} details ({imageErrors.length})
+                                {showDetails ? 'Hide' : 'Show'} details ({imageErrors.length + dateErrors.length})
                             </button>
 
                             {showDetails && (
                                 <div className="mt-2 max-h-40 overflow-y-auto space-y-1.5 text-[10px]">
+                                    {/* Date parse errors */}
+                                    {dateErrors.map((error, idx) => (
+                                        <div
+                                            key={`date-${idx}`}
+                                            className="p-1.5 rounded bg-red-100/50"
+                                        >
+                                            <div className="flex items-center gap-1 font-medium">
+                                                <AlertCircle size={10} className="text-red-600 shrink-0" />
+                                                Row {error.rowIndex}
+                                            </div>
+                                            <div className="opacity-70 pl-3.5">
+                                                {error.reason}
+                                            </div>
+                                            <div className="opacity-50 pl-3.5 truncate text-[9px]">
+                                                Value: &quot;{error.rawDate}&quot;
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {/* Image errors */}
                                     {imageErrors.map((error, idx) => (
                                         <div
-                                            key={idx}
+                                            key={`img-${idx}`}
                                             className={`p-1.5 rounded ${
                                                 error.type === 'skipped'
                                                     ? 'bg-yellow-100/50'
@@ -701,6 +760,11 @@ export default function CSVImport() {
                                             </div>
                                         </div>
                                     ))}
+                                    {dateErrors.length > 0 && (
+                                        <div className="pt-2 border-t border-current/10 opacity-60">
+                                            <strong>Tip:</strong> Dates must be YYYY-MM-DD or MM/DD/YY format.
+                                        </div>
+                                    )}
                                     {imageErrors.some(e => e.type === 'skipped') && (
                                         <div className="pt-2 border-t border-current/10 opacity-60">
                                             <strong>Tip:</strong> Use direct https image URLs or upload files manually.
@@ -715,6 +779,7 @@ export default function CSVImport() {
                         onClick={() => {
                             setStatus(null);
                             setImageErrors([]);
+                            setDateErrors([]);
                             setShowDetails(false);
                         }}
                         className="mt-2 text-[10px] underline uppercase tracking-wider font-bold opacity-70"

@@ -1,5 +1,5 @@
 import { PostDay } from "./types";
-import { buildBufferText } from "./buffer-stubs";
+import { formatForBufferExport, randomTimeInWindow5Min } from "./postingTime";
 
 export type BufferPlatform = "instagram" | "facebook";
 
@@ -27,6 +27,34 @@ function escapeCsvField(value: string): string {
     const escaped = value.replace(/"/g, '""');
     // Wrap in double quotes
     return `"${escaped}"`;
+}
+
+/**
+ * Builds Buffer-compatible text with hashtags appended.
+ * - Caption text first
+ * - Two line breaks
+ * - Space-separated hashtags with # symbols
+ */
+export function buildBufferText(caption: string, hashtags: string[]): string {
+    if (!hashtags || hashtags.length === 0) {
+        return caption;
+    }
+
+    // Ensure each hashtag has # prefix
+    const formattedHashtags = hashtags
+        .map((tag) => {
+            const trimmed = tag.trim();
+            if (!trimmed) return "";
+            return trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+        })
+        .filter((tag) => tag.length > 0);
+
+    if (formattedHashtags.length === 0) {
+        return caption;
+    }
+
+    // Caption + two line breaks + space-separated hashtags
+    return `${caption}\n\n${formattedHashtags.join(" ")}`;
 }
 
 /**
@@ -65,20 +93,19 @@ export function postHasImage(
  * Generates a Buffer-compatible CSV for bulk upload.
  *
  * Buffer CSV format:
- * Text,Link,Photo Link,Video Link,Posting Time
+ * Text,Image URL,Tags,Posting Time
  *
- * - Text: Caption with hashtags
- * - Link: Empty (we don't use links)
- * - Photo Link: Firebase Storage download URL
- * - Video Link: Empty
- * - Posting Time: Empty (let Buffer schedule)
+ * - Text: Caption + two line breaks + space-separated hashtags (with # symbols)
+ * - Image URL: Firebase Storage download URL
+ * - Tags: Empty (not used for hashtags)
+ * - Posting Time: MM/DD/YY HH:MM format (24-hour, Denver time)
  */
 export function generateBufferCsv(
     posts: PostDay[],
     platform: BufferPlatform,
     imageUrls: Map<string, string>
 ): ExportResult {
-    const header = "Text,Link,Photo Link,Video Link,Posting Time";
+    const header = "Text,Image URL,Tags,Posting Time";
     const rows: string[] = [header];
 
     let exportedCount = 0;
@@ -103,7 +130,7 @@ export function generateBufferCsv(
             continue;
         }
 
-        // Get caption for the platform
+        // Get caption and hashtags for the platform
         const platformData = platform === "instagram" ? post.ai?.ig : post.ai?.fb;
         if (!platformData?.caption) {
             // DEBUG: Log skipped posts for caption issues
@@ -118,16 +145,21 @@ export function generateBufferCsv(
             continue;
         }
 
-        // Build the full text with hashtags
+        // Build text with caption + hashtags
         const text = buildBufferText(platformData.caption, platformData.hashtags || []);
 
-        // Create CSV row: Text,Link,Photo Link,Video Link,Posting Time
+        // Get posting time - generate if missing
+        const postingTime = post.postingTime || randomTimeInWindow5Min(post.date, post.date);
+
+        // Format posting time for Buffer: MM/DD/YY HH:MM
+        const formattedPostingTime = formatForBufferExport(post.date, postingTime);
+
+        // Create CSV row: Text,Image URL,Tags,Posting Time
         const row = [
             escapeCsvField(text),
-            '""',           // Link - empty
             escapeCsvField(imageUrl),
-            '""',           // Video Link - empty
-            '""',           // Posting Time - empty (Buffer picks time)
+            "",  // Tags - empty (hashtags are in Text field)
+            escapeCsvField(formattedPostingTime),
         ].join(",");
 
         rows.push(row);
