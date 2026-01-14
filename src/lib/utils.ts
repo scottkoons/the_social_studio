@@ -129,6 +129,11 @@ export function isStrictlyFutureInDenver(dateStr: string): boolean {
  * Uses Denver timezone for weekday calculation.
  */
 export function formatDisplayDate(dateStr: string): string {
+    // Guard against empty or invalid date strings
+    if (!dateStr || !dateStr.includes("-")) {
+        return "";
+    }
+
     const [year, month, day] = dateStr.split("-");
     const yy = year.slice(-2);
 

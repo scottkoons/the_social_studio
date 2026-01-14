@@ -9,7 +9,7 @@ import { ref, getDownloadURL } from "firebase/storage";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCard from "@/components/ui/DashboardCard";
 import ConfirmModal from "@/components/ui/ConfirmModal";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
 import { format, startOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, isSameMonth } from "date-fns";
 import { PostDay } from "@/lib/types";
 import { getTodayInDenver, formatDisplayDate } from "@/lib/utils";
@@ -18,6 +18,8 @@ import { movePostDay } from "@/lib/postDayMove";
 import { useWorkspaceUiSettings } from "@/hooks/useWorkspaceUiSettings";
 import Image from "next/image";
 import CalendarEditModal from "@/components/CalendarEditModal";
+import CalendarPdfPrintRoot from "@/components/CalendarPdfPrintRoot";
+import { PdfExportProgress, getPhaseText } from "@/lib/calendarPdfExport";
 
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -54,6 +56,13 @@ export default function CalendarPage() {
     // Global setting for hiding past unsent posts
     const { settings } = useWorkspaceUiSettings();
     const hidePastUnsent = settings.hidePastUnsent;
+
+    // PDF export state
+    const [isExportingPdf, setIsExportingPdf] = useState(false);
+    const [pdfProgress, setPdfProgress] = useState<PdfExportProgress | null>(null);
+    const [pdfIncludeImages, setPdfIncludeImages] = useState(true);
+    const [pdfError, setPdfError] = useState<string | null>(null);
+    const [pdfWarning, setPdfWarning] = useState<string | null>(null);
 
     // Calculate the 6-week grid bounds
     const monthStart = startOfMonth(currentMonth);
@@ -239,6 +248,47 @@ export default function CalendarPage() {
         setEditingPostImageUrl(null);
     }, []);
 
+    // PDF export handlers
+    const handleExportPdf = useCallback(() => {
+        setPdfError(null);
+        setPdfWarning(null);
+        setIsExportingPdf(true);
+        setPdfProgress(null);
+    }, []);
+
+    const handlePdfComplete = useCallback((warning?: string) => {
+        setIsExportingPdf(false);
+        setPdfProgress(null);
+        setPdfError(null);
+        setPdfWarning(warning || null);
+    }, []);
+
+    const handlePdfError = useCallback((error: string, stack?: string) => {
+        // Log full error details to console
+        console.error("[PDF] Export failed:", error);
+        if (stack) {
+            console.error("[PDF] Stack trace:", stack);
+        }
+
+        setIsExportingPdf(false);
+        setPdfProgress(null);
+        setPdfError(error);
+    }, []);
+
+    const handlePdfProgress = useCallback((progress: PdfExportProgress) => {
+        // Only update if the phase or current page actually changed
+        // This prevents infinite re-render loops
+        setPdfProgress((prev) => {
+            if (!prev) return progress;
+            if (prev.phase === progress.phase &&
+                prev.current === progress.current &&
+                prev.total === progress.total) {
+                return prev; // No change, return same reference
+            }
+            return progress;
+        });
+    }, []);
+
     // Generate the grid of days (6 weeks)
     const generateCalendarDays = () => {
         const days: Date[] = [];
@@ -296,13 +346,82 @@ export default function CalendarPage() {
                             {format(currentMonth, "MMMM yyyy")}
                         </h2>
                     </div>
-                    <button
-                        onClick={goToToday}
-                        className="px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                        Today
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={goToToday}
+                            className="px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        >
+                            Today
+                        </button>
+
+                        {/* PDF Export Controls */}
+                        <div className="flex items-center gap-2 pl-2 border-l border-gray-200">
+                            <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={pdfIncludeImages}
+                                    onChange={(e) => setPdfIncludeImages(e.target.checked)}
+                                    disabled={isExportingPdf}
+                                    className="h-3.5 w-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:opacity-50"
+                                />
+                                Include images
+                            </label>
+                            <button
+                                onClick={handleExportPdf}
+                                disabled={isExportingPdf || posts.size === 0}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                            >
+                                {isExportingPdf ? (
+                                    <>
+                                        <Loader2 size={14} className="animate-spin" />
+                                        <span className="max-w-[180px] truncate">
+                                            {pdfProgress
+                                                ? getPhaseText(pdfProgress)
+                                                : "Preparing..."}
+                                        </span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Download size={14} />
+                                        Download PDF
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
                 </div>
+
+                {/* PDF Error Display */}
+                {pdfError && (
+                    <div className="mx-4 mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <div className="flex items-start gap-2">
+                            <span className="text-red-600 text-sm font-medium">PDF Export Failed:</span>
+                            <span className="text-red-700 text-sm flex-1">{pdfError}</span>
+                            <button
+                                onClick={() => setPdfError(null)}
+                                className="text-red-500 hover:text-red-700 text-sm"
+                            >
+                                Dismiss
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* PDF Warning Display (e.g., images failed due to CORS) */}
+                {pdfWarning && !pdfError && (
+                    <div className="mx-4 mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <div className="flex items-start gap-2">
+                            <span className="text-amber-600 text-sm font-medium">PDF Exported with Warning:</span>
+                            <span className="text-amber-700 text-sm flex-1">{pdfWarning}</span>
+                            <button
+                                onClick={() => setPdfWarning(null)}
+                                className="text-amber-500 hover:text-amber-700 text-sm"
+                            >
+                                Dismiss
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {loading ? (
                     <div className="py-16 text-center">
@@ -393,6 +512,18 @@ export default function CalendarPage() {
                 onConfirm={handleOverwriteConfirm}
                 onCancel={handleOverwriteCancel}
             />
+
+            {/* PDF Export - Offscreen Render */}
+            {isExportingPdf && (
+                <CalendarPdfPrintRoot
+                    posts={Array.from(posts.values())}
+                    workspaceId={workspaceId}
+                    includeImages={pdfIncludeImages}
+                    onComplete={handlePdfComplete}
+                    onError={handlePdfError}
+                    onProgress={handlePdfProgress}
+                />
+            )}
         </div>
     );
 }
