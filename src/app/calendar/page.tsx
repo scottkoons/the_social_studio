@@ -19,7 +19,9 @@ import { useWorkspaceUiSettings } from "@/hooks/useWorkspaceUiSettings";
 import Image from "next/image";
 import CalendarEditModal from "@/components/CalendarEditModal";
 import CalendarPdfPrintRoot from "@/components/CalendarPdfPrintRoot";
+import PostsPdfPrintRoot from "@/components/PostsPdfPrintRoot";
 import { PdfExportProgress, getPhaseText } from "@/lib/calendarPdfExport";
+import { PostsPdfExportProgress, getPhaseText as getPostsPhaseText } from "@/lib/postsPdfExport";
 
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -57,12 +59,18 @@ export default function CalendarPage() {
     const { settings } = useWorkspaceUiSettings();
     const hidePastUnsent = settings.hidePastUnsent;
 
-    // PDF export state
+    // Calendar PDF export state
     const [isExportingPdf, setIsExportingPdf] = useState(false);
     const [pdfProgress, setPdfProgress] = useState<PdfExportProgress | null>(null);
     const [pdfIncludeImages, setPdfIncludeImages] = useState(true);
     const [pdfError, setPdfError] = useState<string | null>(null);
     const [pdfWarning, setPdfWarning] = useState<string | null>(null);
+
+    // Posts PDF export state
+    const [isExportingPostsPdf, setIsExportingPostsPdf] = useState(false);
+    const [postsPdfProgress, setPostsPdfProgress] = useState<PostsPdfExportProgress | null>(null);
+    const [postsPdfError, setPostsPdfError] = useState<string | null>(null);
+    const [postsPdfWarning, setPostsPdfWarning] = useState<string | null>(null);
 
     // Calculate the 6-week grid bounds
     const monthStart = startOfMonth(currentMonth);
@@ -289,6 +297,43 @@ export default function CalendarPage() {
         });
     }, []);
 
+    // Posts PDF export handlers
+    const handleExportPostsPdf = useCallback(() => {
+        setPostsPdfError(null);
+        setPostsPdfWarning(null);
+        setIsExportingPostsPdf(true);
+        setPostsPdfProgress(null);
+    }, []);
+
+    const handlePostsPdfComplete = useCallback((warning?: string) => {
+        setIsExportingPostsPdf(false);
+        setPostsPdfProgress(null);
+        setPostsPdfError(null);
+        setPostsPdfWarning(warning || null);
+    }, []);
+
+    const handlePostsPdfError = useCallback((error: string, stack?: string) => {
+        console.error("[Posts PDF] Export failed:", error);
+        if (stack) {
+            console.error("[Posts PDF] Stack trace:", stack);
+        }
+        setIsExportingPostsPdf(false);
+        setPostsPdfProgress(null);
+        setPostsPdfError(error);
+    }, []);
+
+    const handlePostsPdfProgress = useCallback((progress: PostsPdfExportProgress) => {
+        setPostsPdfProgress((prev) => {
+            if (!prev) return progress;
+            if (prev.phase === progress.phase &&
+                prev.current === progress.current &&
+                prev.total === progress.total) {
+                return prev;
+            }
+            return progress;
+        });
+    }, []);
+
     // Generate the grid of days (6 weeks)
     const generateCalendarDays = () => {
         const days: Date[] = [];
@@ -361,14 +406,14 @@ export default function CalendarPage() {
                                     type="checkbox"
                                     checked={pdfIncludeImages}
                                     onChange={(e) => setPdfIncludeImages(e.target.checked)}
-                                    disabled={isExportingPdf}
+                                    disabled={isExportingPdf || isExportingPostsPdf}
                                     className="h-3.5 w-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:opacity-50"
                                 />
                                 Include images
                             </label>
                             <button
                                 onClick={handleExportPdf}
-                                disabled={isExportingPdf || posts.size === 0}
+                                disabled={isExportingPdf || isExportingPostsPdf || posts.size === 0}
                                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
                             >
                                 {isExportingPdf ? (
@@ -383,7 +428,28 @@ export default function CalendarPage() {
                                 ) : (
                                     <>
                                         <Download size={14} />
-                                        Download PDF
+                                        Calendar PDF
+                                    </>
+                                )}
+                            </button>
+                            <button
+                                onClick={handleExportPostsPdf}
+                                disabled={isExportingPdf || isExportingPostsPdf || posts.size === 0}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                            >
+                                {isExportingPostsPdf ? (
+                                    <>
+                                        <Loader2 size={14} className="animate-spin" />
+                                        <span className="max-w-[180px] truncate">
+                                            {postsPdfProgress
+                                                ? getPostsPhaseText(postsPdfProgress)
+                                                : "Preparing..."}
+                                        </span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Download size={14} />
+                                        Posts PDF
                                     </>
                                 )}
                             </button>
@@ -415,6 +481,38 @@ export default function CalendarPage() {
                             <span className="text-amber-700 text-sm flex-1">{pdfWarning}</span>
                             <button
                                 onClick={() => setPdfWarning(null)}
+                                className="text-amber-500 hover:text-amber-700 text-sm"
+                            >
+                                Dismiss
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Posts PDF Error Display */}
+                {postsPdfError && (
+                    <div className="mx-4 mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <div className="flex items-start gap-2">
+                            <span className="text-red-600 text-sm font-medium">Posts PDF Export Failed:</span>
+                            <span className="text-red-700 text-sm flex-1">{postsPdfError}</span>
+                            <button
+                                onClick={() => setPostsPdfError(null)}
+                                className="text-red-500 hover:text-red-700 text-sm"
+                            >
+                                Dismiss
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Posts PDF Warning Display */}
+                {postsPdfWarning && !postsPdfError && (
+                    <div className="mx-4 mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <div className="flex items-start gap-2">
+                            <span className="text-amber-600 text-sm font-medium">Posts PDF Exported with Warning:</span>
+                            <span className="text-amber-700 text-sm flex-1">{postsPdfWarning}</span>
+                            <button
+                                onClick={() => setPostsPdfWarning(null)}
                                 className="text-amber-500 hover:text-amber-700 text-sm"
                             >
                                 Dismiss
@@ -513,7 +611,7 @@ export default function CalendarPage() {
                 onCancel={handleOverwriteCancel}
             />
 
-            {/* PDF Export - Offscreen Render */}
+            {/* Calendar PDF Export - Offscreen Render */}
             {isExportingPdf && (
                 <CalendarPdfPrintRoot
                     posts={Array.from(posts.values())}
@@ -522,6 +620,18 @@ export default function CalendarPage() {
                     onComplete={handlePdfComplete}
                     onError={handlePdfError}
                     onProgress={handlePdfProgress}
+                />
+            )}
+
+            {/* Posts PDF Export - Offscreen Render */}
+            {isExportingPostsPdf && (
+                <PostsPdfPrintRoot
+                    posts={Array.from(posts.values())}
+                    workspaceId={workspaceId}
+                    includeImages={pdfIncludeImages}
+                    onComplete={handlePostsPdfComplete}
+                    onError={handlePostsPdfError}
+                    onProgress={handlePostsPdfProgress}
                 />
             )}
         </div>
