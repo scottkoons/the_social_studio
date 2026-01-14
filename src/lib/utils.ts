@@ -124,6 +124,22 @@ export function isStrictlyFutureInDenver(dateStr: string): boolean {
 }
 
 /**
+ * Formats a YYYY-MM-DD date string for user display.
+ * Format: "EEE MM/DD/YY" (e.g., "Fri 01/16/26")
+ * Uses Denver timezone for weekday calculation.
+ */
+export function formatDisplayDate(dateStr: string): string {
+    const [year, month, day] = dateStr.split("-");
+    const yy = year.slice(-2);
+
+    // Parse date and get weekday in Denver timezone
+    const date = parseISO(dateStr);
+    const weekday = formatInTimeZone(date, DENVER_TZ, "EEE");
+
+    return `${weekday} ${month}/${day}/${yy}`;
+}
+
+/**
  * Returns common flags for a post.
  */
 export function computeFlags(post: { date: string, starterText?: string, imageAssetId?: string }): string[] {

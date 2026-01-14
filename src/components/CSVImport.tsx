@@ -7,7 +7,7 @@ import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { FileDown, AlertCircle, Check, X, Image, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { parseCsvDate } from "@/lib/utils";
+import { parseCsvDate, formatDisplayDate } from "@/lib/utils";
 import { randomTimeInWindow5Min } from "@/lib/postingTime";
 
 // ============================================================================
@@ -750,7 +750,7 @@ export default function CSVImport() {
                                                 ) : (
                                                     <AlertCircle size={10} className="text-red-600 shrink-0" />
                                                 )}
-                                                {error.date}
+                                                {formatDisplayDate(error.date)}
                                             </div>
                                             <div className="opacity-70 pl-3.5" title={error.imageUrl}>
                                                 {error.reason}
@@ -809,7 +809,7 @@ export default function CSVImport() {
                         {/* Content */}
                         <div className="px-6 py-4 space-y-4">
                             <p className="text-sm text-gray-600">
-                                A post for <span className="font-bold text-gray-900">{currentDuplicate.row.date}</span> already exists.
+                                A post for <span className="font-bold text-gray-900">{formatDisplayDate(currentDuplicate.row.date)}</span> already exists.
                             </p>
 
                             {/* Comparison */}

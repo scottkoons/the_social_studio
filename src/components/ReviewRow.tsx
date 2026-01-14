@@ -8,7 +8,7 @@ import ImageUpload from "./ImageUpload";
 import StatusPill from "./ui/StatusPill";
 import ConfirmModal from "./ui/ConfirmModal";
 import { Loader2, RefreshCw, Trash2, AlertCircle } from "lucide-react";
-import { isPastOrTodayInDenver, normalizeHashtagsArray, appendGlobalHashtags } from "@/lib/utils";
+import { isPastOrTodayInDenver, normalizeHashtagsArray, appendGlobalHashtags, formatDisplayDate } from "@/lib/utils";
 import { movePostDay } from "@/lib/postDayMove";
 import { useAuth } from "@/context/AuthContext";
 import { formatTimeForDisplay, randomTimeInWindow5Min } from "@/lib/postingTime";
@@ -172,12 +172,18 @@ export default function ReviewRow({ post, isSelected, isGenerating, onSelect, on
             {/* Date */}
             <td className="px-4 py-4 align-top">
                 <div className="flex flex-col gap-1.5">
-                    <input
-                        type="date"
-                        value={post.date}
-                        onChange={(e) => handleDateChange(e.target.value)}
-                        className="font-mono text-sm font-medium text-gray-900 border-none bg-transparent focus:ring-0 p-0 cursor-pointer w-32"
-                    />
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900">
+                            {formatDisplayDate(post.date)}
+                        </span>
+                        <input
+                            type="date"
+                            value={post.date}
+                            onChange={(e) => handleDateChange(e.target.value)}
+                            className="w-5 h-5 opacity-0 hover:opacity-100 focus:opacity-100 cursor-pointer"
+                            title="Change date"
+                        />
+                    </div>
                     <span className="text-xs text-gray-500">
                         {formatTimeForDisplay(post.postingTime || randomTimeInWindow5Min(post.date, post.date))}
                     </span>
@@ -210,7 +216,7 @@ export default function ReviewRow({ post, isSelected, isGenerating, onSelect, on
                 <ConfirmModal
                     open={showOverwriteModal}
                     title="Overwrite Existing Post?"
-                    description={`A post already exists for ${pendingNewDate}. Do you want to replace it with this one?`}
+                    description={`A post already exists for ${pendingNewDate ? formatDisplayDate(pendingNewDate) : ""}. Do you want to replace it with this one?`}
                     confirmText="Overwrite"
                     cancelText="Cancel"
                     onConfirm={handleOverwriteConfirm}
@@ -359,7 +365,7 @@ export default function ReviewRow({ post, isSelected, isGenerating, onSelect, on
                 <ConfirmModal
                     open={showDeleteModal}
                     title="Delete this post?"
-                    description={`This will remove the post for ${post.date} from the schedule. This cannot be undone.`}
+                    description={`This will remove the post for ${formatDisplayDate(post.date)} from the schedule. This cannot be undone.`}
                     confirmText="Delete"
                     cancelText="Cancel"
                     confirmVariant="danger"

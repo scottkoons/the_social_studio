@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { db } from "@/lib/firebase";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { isPastOrTodayInDenver } from "@/lib/utils";
+import { isPastOrTodayInDenver, formatDisplayDate } from "@/lib/utils";
 import { movePostDay } from "@/lib/postDayMove";
 import { PostDay } from "@/lib/types";
 import ImageUpload from "./ImageUpload";
@@ -141,12 +141,18 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
             {/* Date */}
             <td className="px-4 py-4 align-top">
                 <div className="flex flex-col gap-1.5">
-                    <input
-                        type="date"
-                        value={post.date}
-                        onChange={(e) => handleDateChange(e.target.value)}
-                        className="font-mono text-sm font-medium text-gray-900 border-none bg-transparent focus:ring-0 p-0 cursor-pointer w-32"
-                    />
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900">
+                            {formatDisplayDate(post.date)}
+                        </span>
+                        <input
+                            type="date"
+                            value={post.date}
+                            onChange={(e) => handleDateChange(e.target.value)}
+                            className="w-5 h-5 opacity-0 hover:opacity-100 focus:opacity-100 cursor-pointer"
+                            title="Change date"
+                        />
+                    </div>
                     {isPast && (
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 w-fit uppercase tracking-wide">
                             Past date
@@ -196,7 +202,7 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
         <ConfirmModal
             open={showOverwriteModal}
             title="Overwrite Existing Post?"
-            description={`A post already exists for ${pendingNewDate}. Do you want to replace it with this one?`}
+            description={`A post already exists for ${pendingNewDate ? formatDisplayDate(pendingNewDate) : ""}. Do you want to replace it with this one?`}
             confirmText="Overwrite"
             cancelText="Cancel"
             onConfirm={handleOverwriteConfirm}

@@ -12,7 +12,7 @@ import ConfirmModal from "@/components/ui/ConfirmModal";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { format, startOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, isSameMonth } from "date-fns";
 import { PostDay } from "@/lib/types";
-import { getTodayInDenver } from "@/lib/utils";
+import { getTodayInDenver, formatDisplayDate } from "@/lib/utils";
 import { formatTimeForDisplay, randomTimeInWindow5Min } from "@/lib/postingTime";
 import { movePostDay } from "@/lib/postDayMove";
 import { useWorkspaceUiSettings } from "@/hooks/useWorkspaceUiSettings";
@@ -387,7 +387,7 @@ export default function CalendarPage() {
             <ConfirmModal
                 open={showOverwriteModal && !!(pendingDrop || editDateConflict)}
                 title="Date already has a post"
-                description={`A post already exists on ${pendingDrop?.targetDate || editDateConflict?.targetDate}. Do you want to overwrite it? This will replace the existing post with the one you're moving.`}
+                description={`A post already exists on ${formatDisplayDate(pendingDrop?.targetDate || editDateConflict?.targetDate || "")}. Do you want to overwrite it? This will replace the existing post with the one you're moving.`}
                 confirmText={isMoving ? "Moving..." : "Overwrite"}
                 cancelText="Cancel"
                 onConfirm={handleOverwriteConfirm}

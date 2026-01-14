@@ -98,7 +98,7 @@ export function postHasImage(
  * - Text: Caption + two line breaks + space-separated hashtags (with # symbols)
  * - Image URL: Firebase Storage download URL
  * - Tags: Empty (not used for hashtags)
- * - Posting Time: MM/DD/YY HH:MM format (24-hour, Denver time)
+ * - Posting Time: YYYY-MM-DD HH:MM format (24-hour, Denver time)
  */
 export function generateBufferCsv(
     posts: PostDay[],
@@ -151,7 +151,7 @@ export function generateBufferCsv(
         // Get posting time - generate if missing
         const postingTime = post.postingTime || randomTimeInWindow5Min(post.date, post.date);
 
-        // Format posting time for Buffer: MM/DD/YY HH:MM
+        // Format posting time for Buffer: YYYY-MM-DD HH:MM
         const formattedPostingTime = formatForBufferExport(post.date, postingTime);
 
         // Create CSV row: Text,Image URL,Tags,Posting Time

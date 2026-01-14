@@ -165,16 +165,15 @@ export function formatTimeForDisplay(time: string): string {
 
 /**
  * Formats date and time for Buffer CSV export.
- * Buffer format: MM/DD/YY HH:MM (24-hour)
+ * Buffer format: YYYY-MM-DD HH:MM (24-hour)
  *
  * @param dateISO - Date in YYYY-MM-DD format
  * @param time - Time in HH:MM format (24-hour)
- * @returns Formatted string "MM/DD/YY HH:MM"
+ * @returns Formatted string "YYYY-MM-DD HH:MM"
  */
 export function formatForBufferExport(dateISO: string, time: string): string {
-    const [year, month, day] = dateISO.split("-");
-    const yy = year.slice(-2); // Last 2 digits of year
-    return `${month}/${day}/${yy} ${time}`;
+    // dateISO is already in YYYY-MM-DD format, time is already HH:MM
+    return `${dateISO} ${time}`;
 }
 
 /**

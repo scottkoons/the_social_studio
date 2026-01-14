@@ -9,7 +9,7 @@ import { doc, updateDoc, deleteDoc, setDoc, getDoc, serverTimestamp, deleteField
 import { httpsCallable } from "firebase/functions";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useDropzone } from "react-dropzone";
-import { normalizeHashtagsArray, appendGlobalHashtags, stripUndefined } from "@/lib/utils";
+import { normalizeHashtagsArray, appendGlobalHashtags, stripUndefined, formatDisplayDate } from "@/lib/utils";
 import { generatePostingTimeForDateChange, roundToNearest5Min, randomTimeInWindow5Min, getWindowDescription } from "@/lib/postingTime";
 
 interface GeneratePostCopyResponse {
@@ -380,7 +380,7 @@ export default function CalendarEditModal({
             <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-gray-50">
-                    <h2 className="font-semibold text-gray-900">Edit Post - {post.date}</h2>
+                    <h2 className="font-semibold text-gray-900">Edit Post - {formatDisplayDate(post.date)}</h2>
                     <button
                         onClick={onClose}
                         className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
@@ -601,7 +601,7 @@ export default function CalendarEditModal({
                         </div>
                         <div className="px-5 py-4">
                             <p className="text-sm text-gray-600">
-                                Are you sure you want to delete the post for {post.date}? This cannot be undone.
+                                Are you sure you want to delete the post for {formatDisplayDate(post.date)}? This cannot be undone.
                             </p>
                         </div>
                         <div className="px-5 py-4 bg-gray-50 flex justify-end gap-2">
