@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
 import { LogOut, Layout, Calendar, FileCheck, Settings } from "lucide-react";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 
 export default function Navbar() {
     const { user, logout } = useAuth();
@@ -20,20 +21,20 @@ export default function Navbar() {
     ];
 
     return (
-        <nav className="fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-100 z-50 px-4 md:px-8">
+        <nav className="fixed top-0 left-0 right-0 h-16 bg-[var(--bg-card)] border-b border-[var(--border-primary)] z-50 px-4 md:px-8">
             <div className="max-w-7xl mx-auto h-full flex items-center justify-between">
                 <div className="flex items-center gap-8">
-                    <Link href="/input" className="flex items-center gap-2">
-                        <div className="relative w-8 h-8">
+                    <Link href="/input" className="flex items-center">
+                        <div className="relative h-8 w-auto">
                             <Image
                                 src="/branding/the-social-studio-logo.png"
-                                alt="The Social Studio Logo"
-                                fill
-                                className="object-contain"
-                                sizes="32px"
+                                alt="The Social Studio"
+                                width={180}
+                                height={32}
+                                className="object-contain h-8 w-auto"
+                                priority
                             />
                         </div>
-                        <span className="font-bold text-xl text-navy-900 hidden sm:block">The Social Studio</span>
                     </Link>
 
                     <div className="hidden md:flex items-center gap-1">
@@ -44,10 +45,11 @@ export default function Navbar() {
                                 <Link
                                     key={item.href}
                                     href={item.href}
-                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
-                                        ? "bg-teal-50 text-teal-600"
-                                        : "text-gray-500 hover:text-gray-900 hover:bg-gray-50"
-                                        }`}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                        isActive
+                                            ? "bg-[var(--accent-bg)] text-[var(--accent-primary)]"
+                                            : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+                                    }`}
                                 >
                                     <Icon size={18} />
                                     {item.name}
@@ -57,8 +59,10 @@ export default function Navbar() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-3 pr-4 border-r border-gray-100">
+                <div className="flex items-center gap-3">
+                    <ThemeToggle />
+
+                    <div className="flex items-center gap-3 pl-3 border-l border-[var(--border-primary)]">
                         {user.photoURL && (
                             <Image
                                 src={user.photoURL}
@@ -68,13 +72,14 @@ export default function Navbar() {
                                 className="rounded-full"
                             />
                         )}
-                        <span className="text-sm font-medium text-gray-700 hidden lg:block">
+                        <span className="text-sm font-medium text-[var(--text-secondary)] hidden lg:block">
                             {user.displayName}
                         </span>
                     </div>
+
                     <button
                         onClick={logout}
-                        className="flex items-center gap-2 text-gray-500 hover:text-red-600 transition-colors"
+                        className="flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--status-error)] transition-colors"
                         title="Logout"
                     >
                         <LogOut size={20} />

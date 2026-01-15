@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 
 import { AuthProvider } from "@/context/AuthContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 import { AuthGuard } from "@/components/AuthGuard";
 import Navbar from "@/components/Navbar";
 import ClientOnly from "@/components/ClientOnly";
@@ -24,15 +25,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} antialiased bg-gray-50 text-gray-900`}>
-        <AuthProvider>
-          <ClientOnly>
-            <AuthGuard>
-              <Navbar />
-              <main className="pt-16 min-h-screen">{children}</main>
-            </AuthGuard>
-          </ClientOnly>
-        </AuthProvider>
+      <body className={`${inter.className} antialiased`}>
+        <ThemeProvider>
+          <AuthProvider>
+            <ClientOnly>
+              <AuthGuard>
+                <Navbar />
+                <main className="pt-16 min-h-screen">{children}</main>
+              </AuthGuard>
+            </ClientOnly>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

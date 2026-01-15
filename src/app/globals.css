@@ -1,26 +1,184 @@
 @import "tailwindcss";
 
+/* ========================================
+   Theme CSS Variables
+   ======================================== */
+
+/* Light theme (default) */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Backgrounds - more contrast between layers */
+  --bg-primary: #f3f4f6;
+  --bg-secondary: #e5e7eb;
+  --bg-tertiary: #d1d5db;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f9fafb;
+
+  /* Text */
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-tertiary: #6b7280;
+  --text-muted: #9ca3af;
+
+  /* Borders */
+  --border-primary: #d1d5db;
+  --border-primary-hover: #9ca3af;
+  --border-secondary: #e5e7eb;
+
+  /* Accent colors (matching Social Studio logo #053a66) */
+  --accent-primary: #053a66;
+  --accent-primary-hover: #042d50;
+  --accent-secondary: #0a4d7a;
+  --accent-bg: #e8f4fc;
+  --accent-bg-light: #f0f8ff;
+
+  /* Table */
+  --table-header-bg: #f3f4f6;
+  --table-row-hover: rgba(243, 244, 246, 0.7);
+  --table-row-selected: rgba(8, 145, 178, 0.1);
+  --table-border: #d1d5db;
+
+  /* Input */
+  --input-bg: #ffffff;
+  --input-border: #d1d5db;
+  --input-focus-ring: #0891b2;
+
+  /* Status colors */
+  --status-success: #059669;
+  --status-warning: #d97706;
+  --status-error: #dc2626;
+  --status-info: #2563eb;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
 }
+
+/* Dark theme */
+.dark {
+  /* Backgrounds - Deep teal/navy palette (from demo) */
+  --bg-primary: #111C22;
+  --bg-secondary: #192B33;
+  --bg-tertiary: #1E3640;
+  --bg-card: #111C22;
+  --bg-card-hover: #1E3640;
+
+  /* Text */
+  --text-primary: #ffffff;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  --text-muted: #3d5a68;
+
+  /* Borders - Subtle teal tint */
+  --border-primary: #34576A;
+  --border-primary-hover: #4a7085;
+  --border-secondary: #243842;
+
+  /* Accent colors - Lighter blue for dark mode visibility */
+  --accent-primary: #5ba3d9;
+  --accent-primary-hover: #4a92c8;
+  --accent-secondary: #6bb4ea;
+  --accent-bg: rgba(91, 163, 217, 0.15);
+  --accent-bg-light: rgba(91, 163, 217, 0.08);
+
+  /* Table */
+  --table-header-bg: #192B33;
+  --table-row-hover: rgba(30, 54, 64, 0.5);
+  --table-row-selected: rgba(0, 212, 255, 0.12);
+  --table-border: #34576A;
+
+  /* Input */
+  --input-bg: #192B33;
+  --input-border: #34576A;
+  --input-focus-ring: #00d4ff;
+
+  /* Status colors (adjusted for dark background) */
+  --status-success: #34d399;
+  --status-warning: #fbbf24;
+  --status-error: #f87171;
+  --status-info: #60a5fa;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
+}
+
+/* ========================================
+   Tailwind Theme Integration
+   ======================================== */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-primary);
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* ========================================
+   Base Styles
+   ======================================== */
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Smooth transitions for theme changes */
+*, *::before, *::after {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.15s ease;
+}
+
+/* Disable transitions on page load to prevent flash */
+.no-transitions * {
+  transition: none !important;
+}
+
+/* ========================================
+   Scrollbar Styling
+   ======================================== */
+
+/* Light mode scrollbar */
+:root {
+  scrollbar-color: #d1d5db #f3f4f6;
+}
+
+/* Dark mode scrollbar */
+.dark {
+  scrollbar-color: #475569 #1e293b;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* ========================================
+   Focus States
+   ======================================== */
+
+:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* ========================================
+   Selection
+   ======================================== */
+
+::selection {
+  background: var(--accent-bg);
+  color: var(--text-primary);
 }

@@ -64,8 +64,8 @@ export default function SettingsPage() {
             <div className="p-4 md:p-8 max-w-7xl mx-auto">
                 <DashboardCard>
                     <div className="py-16 text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-500 mx-auto mb-4"></div>
-                        <p className="text-sm text-gray-500">Loading settings...</p>
+                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-[var(--border-primary)] border-t-[var(--accent-primary)] mx-auto mb-4"></div>
+                        <p className="text-sm text-[var(--text-secondary)]">Loading settings...</p>
                     </div>
                 </DashboardCard>
             </div>
@@ -83,27 +83,27 @@ export default function SettingsPage() {
             <DashboardCard>
                 <div className="space-y-6">
                     <div>
-                        <h2 className="text-lg font-semibold text-gray-900">Display Settings</h2>
-                        <p className="text-sm text-gray-500 mt-1">
+                        <h2 className="text-lg font-semibold text-[var(--text-primary)]">Display Settings</h2>
+                        <p className="text-sm text-[var(--text-secondary)] mt-1">
                             Control how content is displayed across your workspace.
                         </p>
                     </div>
 
-                    <div className="border-t border-gray-100 pt-6">
+                    <div className="border-t border-[var(--border-secondary)] pt-6">
                         {/* Hide Past Unsent Toggle */}
                         <div className="flex items-start justify-between gap-4">
                             <div className="flex items-start gap-3">
-                                <div className="mt-0.5 p-2 bg-gray-100 rounded-lg">
-                                    <EyeOff size={18} className="text-gray-600" />
+                                <div className="mt-0.5 p-2 bg-[var(--bg-tertiary)] rounded-lg">
+                                    <EyeOff size={18} className="text-[var(--text-secondary)]" />
                                 </div>
                                 <div>
                                     <label
                                         htmlFor="hidePastUnsent"
-                                        className="text-sm font-medium text-gray-900 cursor-pointer"
+                                        className="text-sm font-medium text-[var(--text-primary)] cursor-pointer"
                                     >
                                         Hide past unsent posts
                                     </label>
-                                    <p className="text-sm text-gray-500 mt-0.5">
+                                    <p className="text-sm text-[var(--text-secondary)] mt-0.5">
                                         Hides posts dated before today that were not sent to Buffer.
                                         Sent posts always remain visible.
                                     </p>
@@ -112,7 +112,7 @@ export default function SettingsPage() {
 
                             <div className="flex items-center gap-3">
                                 {showSaved === "hidePastUnsent" && (
-                                    <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
+                                    <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
                                         <Check size={14} />
                                         Saved
                                     </span>
@@ -126,9 +126,9 @@ export default function SettingsPage() {
                                     disabled={loading}
                                     className={`
                                         relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent
-                                        transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2
+                                        transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] focus:ring-offset-2 focus:ring-offset-[var(--bg-primary)]
                                         disabled:opacity-50 disabled:cursor-not-allowed
-                                        ${settings.hidePastUnsent ? 'bg-teal-600' : 'bg-gray-200'}
+                                        ${settings.hidePastUnsent ? 'bg-[var(--accent-primary)]' : 'bg-[var(--bg-tertiary)]'}
                                     `}
                                 >
                                     <span
@@ -150,34 +150,34 @@ export default function SettingsPage() {
                 <DashboardCard>
                     <div className="space-y-6">
                         <div>
-                            <h2 className="text-lg font-semibold text-gray-900">AI Generation Settings</h2>
-                            <p className="text-sm text-gray-500 mt-1">
+                            <h2 className="text-lg font-semibold text-[var(--text-primary)]">AI Generation Settings</h2>
+                            <p className="text-sm text-[var(--text-secondary)] mt-1">
                                 Customize how AI generates your social media captions.
                             </p>
                         </div>
 
-                        <div className="border-t border-gray-100 pt-6 space-y-6">
+                        <div className="border-t border-[var(--border-secondary)] pt-6 space-y-6">
                             {/* Brand Voice */}
                             <div className="flex items-start gap-3">
-                                <div className="mt-0.5 p-2 bg-purple-100 rounded-lg">
-                                    <Sparkles size={18} className="text-purple-600" />
+                                <div className="mt-0.5 p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                                    <Sparkles size={18} className="text-purple-600 dark:text-purple-400" />
                                 </div>
                                 <div className="flex-1">
                                     <div className="flex items-center justify-between mb-2">
                                         <label
                                             htmlFor="brandVoice"
-                                            className="text-sm font-medium text-gray-900"
+                                            className="text-sm font-medium text-[var(--text-primary)]"
                                         >
                                             Brand Voice
                                         </label>
                                         {showSaved === "brandVoice" && (
-                                            <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
+                                            <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
                                                 <Check size={14} />
                                                 Saved
                                             </span>
                                         )}
                                     </div>
-                                    <p className="text-sm text-gray-500 mb-3">
+                                    <p className="text-sm text-[var(--text-secondary)] mb-3">
                                         Describe your brand&apos;s tone and style. This helps AI generate captions that match your voice.
                                     </p>
                                     <textarea
@@ -185,29 +185,29 @@ export default function SettingsPage() {
                                         value={localBrandVoice}
                                         onChange={(e) => handleBrandVoiceChange(e.target.value)}
                                         placeholder="E.g., Friendly and casual, with a touch of humor. We love using emojis and keeping things upbeat. Our audience is young professionals who appreciate authenticity."
-                                        className="w-full text-sm text-gray-900 placeholder:text-gray-400 border border-gray-200 bg-white rounded-lg p-3 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 min-h-[100px] resize-y"
+                                        className="w-full text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg p-3 focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)] min-h-[100px] resize-y"
                                     />
                                 </div>
                             </div>
 
                             {/* Hashtag Style */}
                             <div className="flex items-start gap-3">
-                                <div className="mt-0.5 p-2 bg-blue-100 rounded-lg">
-                                    <Hash size={18} className="text-blue-600" />
+                                <div className="mt-0.5 p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                                    <Hash size={18} className="text-blue-600 dark:text-blue-400" />
                                 </div>
                                 <div className="flex-1">
                                     <div className="flex items-center justify-between mb-2">
-                                        <label className="text-sm font-medium text-gray-900">
+                                        <label className="text-sm font-medium text-[var(--text-primary)]">
                                             Hashtag Density
                                         </label>
                                         {showSaved === "hashtagStyle" && (
-                                            <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
+                                            <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
                                                 <Check size={14} />
                                                 Saved
                                             </span>
                                         )}
                                     </div>
-                                    <p className="text-sm text-gray-500 mb-3">
+                                    <p className="text-sm text-[var(--text-secondary)] mb-3">
                                         Control how many hashtags AI includes in your posts.
                                     </p>
                                     <div className="flex gap-2">
@@ -222,15 +222,15 @@ export default function SettingsPage() {
                                                 className={`
                                                     flex-1 px-4 py-3 rounded-lg border-2 transition-all text-left
                                                     ${aiSettings.hashtagStyle === option.value
-                                                        ? 'border-teal-500 bg-teal-50'
-                                                        : 'border-gray-200 hover:border-gray-300 bg-white'
+                                                        ? 'border-[var(--accent-primary)] bg-[var(--accent-bg)]'
+                                                        : 'border-[var(--border-primary)] hover:border-[var(--border-primary-hover)] bg-[var(--bg-card)]'
                                                     }
                                                 `}
                                             >
-                                                <div className={`text-sm font-medium ${aiSettings.hashtagStyle === option.value ? 'text-teal-700' : 'text-gray-900'}`}>
+                                                <div className={`text-sm font-medium ${aiSettings.hashtagStyle === option.value ? 'text-[var(--accent-primary)]' : 'text-[var(--text-primary)]'}`}>
                                                     {option.label}
                                                 </div>
-                                                <div className="text-xs text-gray-500 mt-0.5">
+                                                <div className="text-xs text-[var(--text-secondary)] mt-0.5">
                                                     {option.desc}
                                                 </div>
                                             </button>
@@ -241,22 +241,22 @@ export default function SettingsPage() {
 
                             {/* Emoji Style */}
                             <div className="flex items-start gap-3">
-                                <div className="mt-0.5 p-2 bg-amber-100 rounded-lg">
-                                    <Smile size={18} className="text-amber-600" />
+                                <div className="mt-0.5 p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg">
+                                    <Smile size={18} className="text-amber-600 dark:text-amber-400" />
                                 </div>
                                 <div className="flex-1">
                                     <div className="flex items-center justify-between mb-2">
-                                        <label className="text-sm font-medium text-gray-900">
+                                        <label className="text-sm font-medium text-[var(--text-primary)]">
                                             Emoji Density
                                         </label>
                                         {showSaved === "emojiStyle" && (
-                                            <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
+                                            <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
                                                 <Check size={14} />
                                                 Saved
                                             </span>
                                         )}
                                     </div>
-                                    <p className="text-sm text-gray-500 mb-3">
+                                    <p className="text-sm text-[var(--text-secondary)] mb-3">
                                         Control how many emojis AI includes in your captions.
                                     </p>
                                     <div className="flex gap-2">
@@ -271,15 +271,15 @@ export default function SettingsPage() {
                                                 className={`
                                                     flex-1 px-4 py-3 rounded-lg border-2 transition-all text-left
                                                     ${aiSettings.emojiStyle === option.value
-                                                        ? 'border-teal-500 bg-teal-50'
-                                                        : 'border-gray-200 hover:border-gray-300 bg-white'
+                                                        ? 'border-[var(--accent-primary)] bg-[var(--accent-bg)]'
+                                                        : 'border-[var(--border-primary)] hover:border-[var(--border-primary-hover)] bg-[var(--bg-card)]'
                                                     }
                                                 `}
                                             >
-                                                <div className={`text-sm font-medium ${aiSettings.emojiStyle === option.value ? 'text-teal-700' : 'text-gray-900'}`}>
+                                                <div className={`text-sm font-medium ${aiSettings.emojiStyle === option.value ? 'text-[var(--accent-primary)]' : 'text-[var(--text-primary)]'}`}>
                                                     {option.label}
                                                 </div>
-                                                <div className="text-xs text-gray-500 mt-0.5">
+                                                <div className="text-xs text-[var(--text-secondary)] mt-0.5">
                                                     {option.desc}
                                                 </div>
                                             </button>

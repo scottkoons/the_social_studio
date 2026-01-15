@@ -11,19 +11,19 @@ interface ToastProps {
 export default function Toast({ type, message, onClose }: ToastProps) {
     const styles = {
         success: {
-            bg: 'bg-white border-green-200',
-            icon: <CheckCircle2 className="text-green-500 flex-shrink-0" size={18} />,
-            text: 'text-green-800'
+            bg: 'bg-[var(--bg-card)] border-emerald-500/30',
+            icon: <CheckCircle2 className="text-emerald-500 flex-shrink-0" size={18} />,
+            text: 'text-emerald-600 dark:text-emerald-400'
         },
         error: {
-            bg: 'bg-white border-red-200',
+            bg: 'bg-[var(--bg-card)] border-red-500/30',
             icon: <AlertCircle className="text-red-500 flex-shrink-0" size={18} />,
-            text: 'text-red-800'
+            text: 'text-red-600 dark:text-red-400'
         },
         warn: {
-            bg: 'bg-white border-amber-200',
+            bg: 'bg-[var(--bg-card)] border-amber-500/30',
             icon: <AlertCircle className="text-amber-500 flex-shrink-0" size={18} />,
-            text: 'text-amber-800'
+            text: 'text-amber-600 dark:text-amber-400'
         }
     };
 
@@ -36,7 +36,7 @@ export default function Toast({ type, message, onClose }: ToastProps) {
             {onClose && (
                 <button
                     onClick={onClose}
-                    className="ml-2 text-gray-400 hover:text-gray-600 transition-colors"
+                    className="ml-2 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
                 >
                     <X size={16} />
                 </button>

@@ -55,25 +55,25 @@ export default function ConfirmModal({
 
     const confirmButtonClasses = confirmVariant === "danger"
         ? "bg-red-600 hover:bg-red-700 text-white"
-        : "bg-teal-600 hover:bg-teal-700 text-white";
+        : "bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] text-white dark:text-gray-900";
 
     return (
         <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
             onClick={handleBackdropClick}
         >
-            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="bg-[var(--bg-card)] rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-[var(--border-primary)]">
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-primary)]">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-amber-100 rounded-full">
-                            <AlertTriangle className="text-amber-600" size={20} />
+                        <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-full">
+                            <AlertTriangle className="text-amber-600 dark:text-amber-400" size={20} />
                         </div>
-                        <h3 className="font-semibold text-gray-900">{title}</h3>
+                        <h3 className="font-semibold text-[var(--text-primary)]">{title}</h3>
                     </div>
                     <button
                         onClick={onCancel}
-                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                        className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
                     >
                         <X size={20} />
                     </button>
@@ -81,14 +81,14 @@ export default function ConfirmModal({
 
                 {/* Content */}
                 <div className="px-6 py-4">
-                    <p className="text-sm text-gray-600">{description}</p>
+                    <p className="text-sm text-[var(--text-secondary)]">{description}</p>
                 </div>
 
                 {/* Actions */}
-                <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                <div className="px-6 py-4 bg-[var(--bg-secondary)] border-t border-[var(--border-primary)] flex justify-end gap-3">
                     <button
                         onClick={onCancel}
-                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors"
+                        className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-card)] border border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
                     >
                         {cancelText}
                     </button>

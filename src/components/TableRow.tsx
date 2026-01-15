@@ -124,8 +124,8 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
             ref={rowRef}
             className={`
                 transition-colors
-                ${isSelected ? 'bg-teal-50/50' : 'hover:bg-gray-50/50'}
-                ${isHighlighted ? 'ring-2 ring-teal-500 ring-inset bg-teal-50' : ''}
+                ${isSelected ? 'bg-[var(--table-row-selected)]' : 'hover:bg-[var(--table-row-hover)]'}
+                ${isHighlighted ? 'ring-2 ring-[var(--accent-primary)] ring-inset bg-[var(--accent-bg)]' : ''}
             `}
         >
             {/* Checkbox */}
@@ -134,7 +134,7 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
                     type="checkbox"
                     checked={isSelected}
                     onChange={(e) => onSelect(post.date, e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 focus:ring-offset-0 cursor-pointer"
+                    className="h-4 w-4 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-offset-0 cursor-pointer bg-[var(--input-bg)]"
                 />
             </td>
 
@@ -142,7 +142,7 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
             <td className="px-4 py-4 align-top">
                 <div className="flex flex-col gap-1.5">
                     <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-900">
+                        <span className="text-sm font-medium text-[var(--text-primary)]">
                             {formatDisplayDate(post.date)}
                         </span>
                         <input
@@ -154,12 +154,12 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
                         />
                     </div>
                     {isPast && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 w-fit uppercase tracking-wide">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 w-fit uppercase tracking-wide">
                             Past date
                         </span>
                     )}
                     {error && (
-                        <span className="text-[10px] text-red-600 flex items-center gap-1">
+                        <span className="text-[10px] text-[var(--status-error)] flex items-center gap-1">
                             <AlertCircle size={10} />
                             {error}
                         </span>
@@ -182,7 +182,7 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
                     value={starterText}
                     onChange={(e) => setStarterText(e.target.value)}
                     placeholder="What's the post about?"
-                    className="w-full text-sm text-gray-700 border-none bg-transparent focus:ring-0 resize-none min-h-[72px] p-0 placeholder:text-gray-400 leading-relaxed"
+                    className="w-full text-sm text-[var(--text-primary)] border-none bg-transparent focus:ring-0 resize-none min-h-[72px] p-0 placeholder:text-[var(--text-muted)] leading-relaxed"
                 />
             </td>
 
@@ -190,7 +190,7 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
             <td className="px-4 py-4 align-top text-right">
                 <div className="flex items-center justify-end">
                     {isSaving ? (
-                        <Loader2 className="animate-spin text-teal-500" size={16} />
+                        <Loader2 className="animate-spin text-[var(--accent-primary)]" size={16} />
                     ) : (
                         <StatusPill status={post.status} />
                     )}

@@ -377,13 +377,13 @@ export default function CalendarEditModal({
                 }
             }}
         >
-            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="bg-[var(--bg-card)] rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-gray-50">
-                    <h2 className="font-semibold text-gray-900">Edit Post - {formatDisplayDate(post.date)}</h2>
+                <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-primary)] bg-[var(--bg-secondary)]">
+                    <h2 className="font-semibold text-[var(--text-primary)]">Edit Post - {formatDisplayDate(post.date)}</h2>
                     <button
                         onClick={onClose}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                        className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors"
                     >
                         <X size={20} />
                     </button>
@@ -393,12 +393,12 @@ export default function CalendarEditModal({
                 <div className="flex-1 overflow-y-auto p-5 space-y-5">
                     {/* Image section */}
                     <div>
-                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                        <label className="block text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
                             Image
                         </label>
                         {localImageUrl ? (
                             <div className="relative">
-                                <div className="relative h-48 bg-gray-100 rounded-lg overflow-hidden">
+                                <div className="relative h-48 bg-[var(--bg-tertiary)] rounded-lg overflow-hidden">
                                     <Image
                                         src={localImageUrl}
                                         alt="Post image"
@@ -412,7 +412,7 @@ export default function CalendarEditModal({
                                         <input {...getInputProps()} />
                                         <button
                                             type="button"
-                                            className="w-full px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center justify-center gap-2"
+                                            className="w-full px-3 py-2 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] hover:bg-[var(--bg-card-hover)] rounded-lg transition-colors flex items-center justify-center gap-2"
                                         >
                                             <Upload size={14} />
                                             Replace Image
@@ -420,7 +420,7 @@ export default function CalendarEditModal({
                                     </div>
                                     <button
                                         onClick={handleRemoveImage}
-                                        className="px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                                        className="px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                                     >
                                         Remove
                                     </button>
@@ -431,18 +431,18 @@ export default function CalendarEditModal({
                                 {...getRootProps()}
                                 className={`
                                     h-32 rounded-lg border-2 border-dashed flex items-center justify-center cursor-pointer transition-colors
-                                    ${isDragActive ? "border-teal-500 bg-teal-50" : "border-gray-200 hover:border-teal-400 hover:bg-gray-50"}
+                                    ${isDragActive ? "border-[var(--accent-primary)] bg-[var(--accent-bg)]" : "border-[var(--border-primary)] hover:border-[var(--accent-primary)] hover:bg-[var(--bg-tertiary)]"}
                                 `}
                             >
                                 <input {...getInputProps()} />
                                 <div className="text-center">
-                                    <Upload className="mx-auto mb-2 text-gray-400" size={24} />
-                                    <p className="text-sm text-gray-500">Drop an image or click to upload</p>
+                                    <Upload className="mx-auto mb-2 text-[var(--text-tertiary)]" size={24} />
+                                    <p className="text-sm text-[var(--text-secondary)]">Drop an image or click to upload</p>
                                 </div>
                             </div>
                         )}
                         {removeImage && (
-                            <p className="text-xs text-amber-600 mt-1">
+                            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
                                 Image will be removed. Post will not be sendable without an image.
                             </p>
                         )}
@@ -451,18 +451,18 @@ export default function CalendarEditModal({
                     {/* Date and Time */}
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                            <label className="block text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
                                 Date
                             </label>
                             <input
                                 type="date"
                                 value={date}
                                 onChange={(e) => handleDateChange(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                                className="w-full px-3 py-2 border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg text-sm text-[var(--text-primary)] focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)]"
                             />
                         </div>
                         <div>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                            <label className="block text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
                                 Posting Time
                             </label>
                             <input
@@ -470,19 +470,19 @@ export default function CalendarEditModal({
                                 value={postingTime}
                                 onChange={(e) => handleTimeChange(e.target.value)}
                                 step="300"
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                                className="w-full px-3 py-2 border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg text-sm text-[var(--text-primary)] focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)]"
                             />
-                            <p className="text-[10px] text-gray-400 mt-1">
+                            <p className="text-[10px] text-[var(--text-muted)] mt-1">
                                 {getWindowDescription(date)}
                             </p>
                         </div>
                     </div>
 
                     {/* Regenerate AI button */}
-                    <div className="flex items-center justify-between py-3 px-4 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-100">
+                    <div className="flex items-center justify-between py-3 px-4 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-lg border border-purple-100 dark:border-purple-800">
                         <div>
-                            <h3 className="text-sm font-medium text-purple-900">AI Content</h3>
-                            <p className="text-xs text-purple-600">Generate fresh captions and hashtags</p>
+                            <h3 className="text-sm font-medium text-purple-900 dark:text-purple-200">AI Content</h3>
+                            <p className="text-xs text-purple-600 dark:text-purple-400">Generate fresh captions and hashtags</p>
                         </div>
                         <button
                             onClick={handleRegenerate}
@@ -500,27 +500,27 @@ export default function CalendarEditModal({
 
                     {/* Instagram */}
                     <div className="space-y-3">
-                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Instagram</h3>
+                        <h3 className="text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider">Instagram</h3>
                         <div>
                             <div className="flex items-center justify-between mb-1">
-                                <label className="text-xs text-gray-500">Caption</label>
-                                <span className="text-xs text-gray-400">{countWords(igCaption)} words</span>
+                                <label className="text-xs text-[var(--text-tertiary)]">Caption</label>
+                                <span className="text-xs text-[var(--text-muted)]">{countWords(igCaption)} words</span>
                             </div>
                             <textarea
                                 value={igCaption}
                                 onChange={(e) => setIgCaption(e.target.value)}
                                 rows={3}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 resize-none"
+                                className="w-full px-3 py-2 border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)] resize-none"
                                 placeholder="Instagram caption..."
                             />
                         </div>
                         <div>
-                            <label className="block text-xs text-gray-500 mb-1">Hashtags</label>
+                            <label className="block text-xs text-[var(--text-tertiary)] mb-1">Hashtags</label>
                             <input
                                 type="text"
                                 value={igHashtags}
                                 onChange={(e) => setIgHashtags(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                                className="w-full px-3 py-2 border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)]"
                                 placeholder="#tag1, #tag2, #tag3"
                             />
                         </div>
@@ -528,27 +528,27 @@ export default function CalendarEditModal({
 
                     {/* Facebook */}
                     <div className="space-y-3">
-                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Facebook</h3>
+                        <h3 className="text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider">Facebook</h3>
                         <div>
                             <div className="flex items-center justify-between mb-1">
-                                <label className="text-xs text-gray-500">Caption</label>
-                                <span className="text-xs text-gray-400">{countWords(fbCaption)} words</span>
+                                <label className="text-xs text-[var(--text-tertiary)]">Caption</label>
+                                <span className="text-xs text-[var(--text-muted)]">{countWords(fbCaption)} words</span>
                             </div>
                             <textarea
                                 value={fbCaption}
                                 onChange={(e) => setFbCaption(e.target.value)}
                                 rows={3}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 resize-none"
+                                className="w-full px-3 py-2 border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)] resize-none"
                                 placeholder="Facebook caption..."
                             />
                         </div>
                         <div>
-                            <label className="block text-xs text-gray-500 mb-1">Hashtags</label>
+                            <label className="block text-xs text-[var(--text-tertiary)] mb-1">Hashtags</label>
                             <input
                                 type="text"
                                 value={fbHashtags}
                                 onChange={(e) => setFbHashtags(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                                className="w-full px-3 py-2 border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)]"
                                 placeholder="#tag1, #tag2, #tag3"
                             />
                         </div>
@@ -556,18 +556,18 @@ export default function CalendarEditModal({
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-between px-5 py-4 border-t border-gray-200 bg-gray-50">
+                <div className="flex items-center justify-between px-5 py-4 border-t border-[var(--border-primary)] bg-[var(--bg-secondary)]">
                     <div className="flex gap-2">
                         <button
                             onClick={() => setShowDeleteConfirm(true)}
-                            className="px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1.5"
+                            className="px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors flex items-center gap-1.5"
                         >
                             <Trash2 size={14} />
                             Delete
                         </button>
                         <button
                             onClick={() => setShowDuplicateModal(true)}
-                            className="px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5"
+                            className="px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors flex items-center gap-1.5"
                         >
                             <Copy size={14} />
                             Duplicate
@@ -576,14 +576,14 @@ export default function CalendarEditModal({
                     <div className="flex gap-2">
                         <button
                             onClick={onClose}
-                            className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors"
+                            className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                         >
                             Cancel
                         </button>
                         <button
                             onClick={handleSave}
                             disabled={isSaving}
-                            className="px-4 py-2 text-sm font-medium bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                            className="px-4 py-2 text-sm font-medium bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
                         >
                             {isSaving && <Loader2 size={14} className="animate-spin" />}
                             Save
@@ -595,26 +595,26 @@ export default function CalendarEditModal({
             {/* Delete Confirmation Modal */}
             {showDeleteConfirm && (
                 <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50">
-                    <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden">
-                        <div className="px-5 py-4 border-b border-gray-200">
-                            <h3 className="font-semibold text-gray-900">Delete Post?</h3>
+                    <div className="bg-[var(--bg-card)] rounded-xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden">
+                        <div className="px-5 py-4 border-b border-[var(--border-primary)]">
+                            <h3 className="font-semibold text-[var(--text-primary)]">Delete Post?</h3>
                         </div>
                         <div className="px-5 py-4">
-                            <p className="text-sm text-gray-600">
+                            <p className="text-sm text-[var(--text-secondary)]">
                                 Are you sure you want to delete the post for {formatDisplayDate(post.date)}? This cannot be undone.
                             </p>
                         </div>
-                        <div className="px-5 py-4 bg-gray-50 flex justify-end gap-2">
+                        <div className="px-5 py-4 bg-[var(--bg-secondary)] flex justify-end gap-2">
                             <button
                                 onClick={() => setShowDeleteConfirm(false)}
-                                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+                                className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleDelete}
                                 disabled={isDeleting}
-                                className="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-2"
+                                className="px-4 py-2 text-sm font-medium bg-[var(--status-error)] hover:opacity-90 text-white rounded-lg disabled:opacity-50 flex items-center gap-2"
                             >
                                 {isDeleting && <Loader2 size={14} className="animate-spin" />}
                                 Delete
@@ -627,35 +627,35 @@ export default function CalendarEditModal({
             {/* Duplicate Modal */}
             {showDuplicateModal && (
                 <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50">
-                    <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden">
-                        <div className="px-5 py-4 border-b border-gray-200">
-                            <h3 className="font-semibold text-gray-900">Duplicate Post</h3>
+                    <div className="bg-[var(--bg-card)] rounded-xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden">
+                        <div className="px-5 py-4 border-b border-[var(--border-primary)]">
+                            <h3 className="font-semibold text-[var(--text-primary)]">Duplicate Post</h3>
                         </div>
                         <div className="px-5 py-4">
-                            <p className="text-sm text-gray-600 mb-3">
+                            <p className="text-sm text-[var(--text-secondary)] mb-3">
                                 Select a date for the duplicate post:
                             </p>
                             <input
                                 type="date"
                                 value={duplicateDate}
                                 onChange={(e) => setDuplicateDate(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                                className="w-full px-3 py-2 border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg text-sm text-[var(--text-primary)] focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)]"
                             />
                         </div>
-                        <div className="px-5 py-4 bg-gray-50 flex justify-end gap-2">
+                        <div className="px-5 py-4 bg-[var(--bg-secondary)] flex justify-end gap-2">
                             <button
                                 onClick={() => {
                                     setShowDuplicateModal(false);
                                     setDuplicateDate("");
                                 }}
-                                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+                                className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleDuplicate}
                                 disabled={!duplicateDate || isDuplicating}
-                                className="px-4 py-2 text-sm font-medium bg-teal-600 hover:bg-teal-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-2"
+                                className="px-4 py-2 text-sm font-medium bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] text-white rounded-lg disabled:opacity-50 flex items-center gap-2"
                             >
                                 {isDuplicating && <Loader2 size={14} className="animate-spin" />}
                                 Duplicate

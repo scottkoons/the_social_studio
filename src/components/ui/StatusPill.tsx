@@ -13,45 +13,52 @@ interface StatusPillProps {
     wouldBeSkipped?: boolean;
 }
 
-const statusConfig: Record<StatusType, { label: string; dotColor: string; bgColor: string; textColor: string }> = {
+// White/card background with colored border and text for maximum contrast
+// Using CSS variables that respond to .dark class (not prefers-color-scheme)
+const statusConfig: Record<StatusType, {
+    label: string;
+    dotColor: string;
+    borderColor: string;
+    textColor: string;
+}> = {
     input: {
         label: 'Input',
         dotColor: 'bg-gray-400',
-        bgColor: 'bg-gray-50',
+        borderColor: 'border-gray-400',
         textColor: 'text-gray-600'
     },
     generated: {
         label: 'Generated',
-        dotColor: 'bg-teal-500',
-        bgColor: 'bg-teal-50',
-        textColor: 'text-teal-700'
+        dotColor: 'bg-emerald-500',
+        borderColor: 'border-emerald-500',
+        textColor: 'text-emerald-600'
     },
     edited: {
         label: 'Edited',
         dotColor: 'bg-blue-500',
-        bgColor: 'bg-blue-50',
-        textColor: 'text-blue-700'
+        borderColor: 'border-blue-500',
+        textColor: 'text-blue-600'
     },
     sent: {
         label: 'Sent',
-        dotColor: 'bg-green-500',
-        bgColor: 'bg-green-50',
-        textColor: 'text-green-700'
+        dotColor: 'bg-emerald-500',
+        borderColor: 'border-emerald-500',
+        textColor: 'text-emerald-600'
     },
     error: {
         label: 'Error',
         dotColor: 'bg-red-500',
-        bgColor: 'bg-red-50',
-        textColor: 'text-red-700'
+        borderColor: 'border-red-500',
+        textColor: 'text-red-600'
     }
 };
 
 // UI-only override for skipped posts (past date, missing image, etc.)
 const notSentConfig = {
     label: 'Not Sent',
-    dotColor: 'bg-yellow-500',
-    bgColor: 'bg-yellow-50',
-    textColor: 'text-yellow-700'
+    dotColor: 'bg-amber-500',
+    borderColor: 'border-amber-500',
+    textColor: 'text-amber-600'
 };
 
 export default function StatusPill({ status, showDot = true, wouldBeSkipped = false }: StatusPillProps) {
@@ -72,7 +79,7 @@ export default function StatusPill({ status, showDot = true, wouldBeSkipped = fa
     }
 
     return (
-        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${config.bgColor} ${config.textColor}`}>
+        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border bg-[var(--bg-card)] ${config.borderColor} ${config.textColor}`}>
             {showDot && <span className={`w-1.5 h-1.5 rounded-full ${config.dotColor}`} />}
             {config.label}
         </span>

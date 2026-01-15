@@ -6,10 +6,13 @@ import ReviewRow from "./ReviewRow";
 import EmptyState from "./ui/EmptyState";
 import { ChevronDown, ChevronUp, FileText } from "lucide-react";
 
+export type PlatformFilterValue = "all" | "instagram" | "facebook";
+
 interface ReviewTableProps {
     posts: PostDay[];
     selectedIds: Set<string>;
     generatingIds?: Set<string>;
+    platformFilter?: PlatformFilterValue;
     onSelectRow: (id: string, selected: boolean) => void;
     onSelectAll: (selected: boolean) => void;
     onRegenerate?: (dateId: string, previousOutputs?: {
@@ -25,6 +28,7 @@ export default function ReviewTable({
     posts,
     selectedIds,
     generatingIds = new Set(),
+    platformFilter = "all",
     onSelectRow,
     onSelectAll,
     onRegenerate,
@@ -43,10 +47,13 @@ export default function ReviewTable({
     const allSelected = posts.length > 0 && selectedIds.size === posts.length;
     const someSelected = selectedIds.size > 0 && selectedIds.size < posts.length;
 
+    const showInstagram = platformFilter === "all" || platformFilter === "instagram";
+    const showFacebook = platformFilter === "all" || platformFilter === "facebook";
+
     if (posts.length === 0) {
         return (
             <EmptyState
-                icon={<FileText className="text-gray-400" size={24} />}
+                icon={<FileText className="text-[var(--text-tertiary)]" size={24} />}
                 title="No posts available for review"
                 description="Add some posts in the Input tab to get started with AI generation."
             />
@@ -57,8 +64,8 @@ export default function ReviewTable({
         <div className="overflow-x-auto">
             <table className="w-full text-sm">
                 <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                        <th className="sticky top-0 bg-gray-50 px-4 py-3 w-12 z-10">
+                    <tr className="bg-[var(--table-header-bg)] border-b border-[var(--border-primary)]">
+                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-4 py-3 w-12 z-10">
                             <input
                                 type="checkbox"
                                 checked={allSelected}
@@ -66,11 +73,11 @@ export default function ReviewTable({
                                     if (el) el.indeterminate = someSelected;
                                 }}
                                 onChange={(e) => onSelectAll(e.target.checked)}
-                                className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 focus:ring-offset-0 cursor-pointer"
+                                className="h-4 w-4 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-offset-0 cursor-pointer bg-[var(--input-bg)]"
                             />
                         </th>
                         <th
-                            className="sticky top-0 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-32 cursor-pointer hover:text-teal-600 transition-colors z-10"
+                            className="sticky top-0 bg-[var(--table-header-bg)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider w-32 cursor-pointer hover:text-[var(--accent-primary)] transition-colors z-10"
                             onClick={toggleSort}
                         >
                             <div className="flex items-center gap-1">
@@ -78,27 +85,32 @@ export default function ReviewTable({
                                 {sortDir === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                             </div>
                         </th>
-                        <th className="sticky top-0 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-36 z-10">
+                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider w-36 z-10">
                             Image
                         </th>
-                        <th className="sticky top-0 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider z-10">
-                            Instagram Content
-                        </th>
-                        <th className="sticky top-0 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider z-10">
-                            Facebook Content
-                        </th>
-                        <th className="sticky top-0 bg-gray-50 px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider w-28 z-10">
+                        {showInstagram && (
+                            <th className="sticky top-0 bg-[var(--table-header-bg)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10">
+                                Instagram Content
+                            </th>
+                        )}
+                        {showFacebook && (
+                            <th className="sticky top-0 bg-[var(--table-header-bg)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10">
+                                Facebook Content
+                            </th>
+                        )}
+                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-4 py-3 text-right text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider w-28 z-10">
                             Status
                         </th>
                     </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-[var(--border-secondary)]">
                     {sortedPosts.map((post) => (
                         <ReviewRow
                             key={post.date}
                             post={post}
                             isSelected={selectedIds.has(post.date)}
                             isGenerating={generatingIds.has(post.date)}
+                            platformFilter={platformFilter}
                             onSelect={onSelectRow}
                             onRegenerate={onRegenerate}
                             onDelete={onDelete}

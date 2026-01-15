@@ -19,9 +19,7 @@ import { useWorkspaceUiSettings } from "@/hooks/useWorkspaceUiSettings";
 import Image from "next/image";
 import CalendarEditModal from "@/components/CalendarEditModal";
 import CalendarPdfPrintRoot from "@/components/CalendarPdfPrintRoot";
-import PostsPdfPrintRoot from "@/components/PostsPdfPrintRoot";
 import { PdfExportProgress, getPhaseText } from "@/lib/calendarPdfExport";
-import { PostsPdfExportProgress, getPhaseText as getPostsPhaseText } from "@/lib/postsPdfExport";
 
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -66,11 +64,6 @@ export default function CalendarPage() {
     const [pdfError, setPdfError] = useState<string | null>(null);
     const [pdfWarning, setPdfWarning] = useState<string | null>(null);
 
-    // Posts PDF export state
-    const [isExportingPostsPdf, setIsExportingPostsPdf] = useState(false);
-    const [postsPdfProgress, setPostsPdfProgress] = useState<PostsPdfExportProgress | null>(null);
-    const [postsPdfError, setPostsPdfError] = useState<string | null>(null);
-    const [postsPdfWarning, setPostsPdfWarning] = useState<string | null>(null);
 
     // Calculate the 6-week grid bounds
     const monthStart = startOfMonth(currentMonth);
@@ -297,42 +290,6 @@ export default function CalendarPage() {
         });
     }, []);
 
-    // Posts PDF export handlers
-    const handleExportPostsPdf = useCallback(() => {
-        setPostsPdfError(null);
-        setPostsPdfWarning(null);
-        setIsExportingPostsPdf(true);
-        setPostsPdfProgress(null);
-    }, []);
-
-    const handlePostsPdfComplete = useCallback((warning?: string) => {
-        setIsExportingPostsPdf(false);
-        setPostsPdfProgress(null);
-        setPostsPdfError(null);
-        setPostsPdfWarning(warning || null);
-    }, []);
-
-    const handlePostsPdfError = useCallback((error: string, stack?: string) => {
-        console.error("[Posts PDF] Export failed:", error);
-        if (stack) {
-            console.error("[Posts PDF] Stack trace:", stack);
-        }
-        setIsExportingPostsPdf(false);
-        setPostsPdfProgress(null);
-        setPostsPdfError(error);
-    }, []);
-
-    const handlePostsPdfProgress = useCallback((progress: PostsPdfExportProgress) => {
-        setPostsPdfProgress((prev) => {
-            if (!prev) return progress;
-            if (prev.phase === progress.phase &&
-                prev.current === progress.current &&
-                prev.total === progress.total) {
-                return prev;
-            }
-            return progress;
-        });
-    }, []);
 
     // Generate the grid of days (6 weeks)
     const generateCalendarDays = () => {
@@ -354,8 +311,8 @@ export default function CalendarPage() {
             <div className="p-4 md:p-8 max-w-7xl mx-auto">
                 <DashboardCard>
                     <div className="py-16 text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-500 mx-auto mb-4"></div>
-                        <p className="text-sm text-gray-500">Setting up your workspace...</p>
+                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-[var(--border-primary)] border-t-[var(--accent-primary)] mx-auto mb-4"></div>
+                        <p className="text-sm text-[var(--text-secondary)]">Setting up your workspace...</p>
                     </div>
                 </DashboardCard>
             </div>
@@ -371,50 +328,50 @@ export default function CalendarPage() {
 
             <DashboardCard noPadding>
                 {/* Month navigation */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-primary)]">
                     <div className="flex items-center gap-2">
                         <button
                             onClick={goToPreviousMonth}
-                            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                            className="p-1.5 rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors"
                             aria-label="Previous month"
                         >
-                            <ChevronLeft size={20} className="text-gray-600" />
+                            <ChevronLeft size={20} className="text-[var(--text-secondary)]" />
                         </button>
                         <button
                             onClick={goToNextMonth}
-                            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                            className="p-1.5 rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors"
                             aria-label="Next month"
                         >
-                            <ChevronRight size={20} className="text-gray-600" />
+                            <ChevronRight size={20} className="text-[var(--text-secondary)]" />
                         </button>
-                        <h2 className="text-lg font-semibold text-gray-900 ml-2">
+                        <h2 className="text-lg font-semibold text-[var(--text-primary)] ml-2">
                             {format(currentMonth, "MMMM yyyy")}
                         </h2>
                     </div>
                     <div className="flex items-center gap-3">
                         <button
                             onClick={goToToday}
-                            className="px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                            className="px-3 py-1.5 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
                         >
                             Today
                         </button>
 
                         {/* PDF Export Controls */}
-                        <div className="flex items-center gap-2 pl-2 border-l border-gray-200">
-                            <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                        <div className="flex items-center gap-2 pl-2 border-l border-[var(--border-primary)]">
+                            <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
                                 <input
                                     type="checkbox"
                                     checked={pdfIncludeImages}
                                     onChange={(e) => setPdfIncludeImages(e.target.checked)}
-                                    disabled={isExportingPdf || isExportingPostsPdf}
-                                    className="h-3.5 w-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:opacity-50"
+                                    disabled={isExportingPdf}
+                                    className="h-3.5 w-3.5 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] disabled:opacity-50 bg-[var(--input-bg)]"
                                 />
                                 Include images
                             </label>
                             <button
                                 onClick={handleExportPdf}
-                                disabled={isExportingPdf || isExportingPostsPdf || posts.size === 0}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                                disabled={isExportingPdf || posts.size === 0}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
                             >
                                 {isExportingPdf ? (
                                     <>
@@ -432,40 +389,19 @@ export default function CalendarPage() {
                                     </>
                                 )}
                             </button>
-                            <button
-                                onClick={handleExportPostsPdf}
-                                disabled={isExportingPdf || isExportingPostsPdf || posts.size === 0}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
-                            >
-                                {isExportingPostsPdf ? (
-                                    <>
-                                        <Loader2 size={14} className="animate-spin" />
-                                        <span className="max-w-[180px] truncate">
-                                            {postsPdfProgress
-                                                ? getPostsPhaseText(postsPdfProgress)
-                                                : "Preparing..."}
-                                        </span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Download size={14} />
-                                        Posts PDF
-                                    </>
-                                )}
-                            </button>
                         </div>
                     </div>
                 </div>
 
                 {/* PDF Error Display */}
                 {pdfError && (
-                    <div className="mx-4 mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="mx-4 mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                         <div className="flex items-start gap-2">
-                            <span className="text-red-600 text-sm font-medium">PDF Export Failed:</span>
-                            <span className="text-red-700 text-sm flex-1">{pdfError}</span>
+                            <span className="text-red-600 dark:text-red-400 text-sm font-medium">PDF Export Failed:</span>
+                            <span className="text-red-700 dark:text-red-300 text-sm flex-1">{pdfError}</span>
                             <button
                                 onClick={() => setPdfError(null)}
-                                className="text-red-500 hover:text-red-700 text-sm"
+                                className="text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-sm"
                             >
                                 Dismiss
                             </button>
@@ -475,45 +411,13 @@ export default function CalendarPage() {
 
                 {/* PDF Warning Display (e.g., images failed due to CORS) */}
                 {pdfWarning && !pdfError && (
-                    <div className="mx-4 mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <div className="mx-4 mt-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                         <div className="flex items-start gap-2">
-                            <span className="text-amber-600 text-sm font-medium">PDF Exported with Warning:</span>
-                            <span className="text-amber-700 text-sm flex-1">{pdfWarning}</span>
+                            <span className="text-amber-600 dark:text-amber-400 text-sm font-medium">PDF Exported with Warning:</span>
+                            <span className="text-amber-700 dark:text-amber-300 text-sm flex-1">{pdfWarning}</span>
                             <button
                                 onClick={() => setPdfWarning(null)}
-                                className="text-amber-500 hover:text-amber-700 text-sm"
-                            >
-                                Dismiss
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* Posts PDF Error Display */}
-                {postsPdfError && (
-                    <div className="mx-4 mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                        <div className="flex items-start gap-2">
-                            <span className="text-red-600 text-sm font-medium">Posts PDF Export Failed:</span>
-                            <span className="text-red-700 text-sm flex-1">{postsPdfError}</span>
-                            <button
-                                onClick={() => setPostsPdfError(null)}
-                                className="text-red-500 hover:text-red-700 text-sm"
-                            >
-                                Dismiss
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* Posts PDF Warning Display */}
-                {postsPdfWarning && !postsPdfError && (
-                    <div className="mx-4 mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                        <div className="flex items-start gap-2">
-                            <span className="text-amber-600 text-sm font-medium">Posts PDF Exported with Warning:</span>
-                            <span className="text-amber-700 text-sm flex-1">{postsPdfWarning}</span>
-                            <button
-                                onClick={() => setPostsPdfWarning(null)}
-                                className="text-amber-500 hover:text-amber-700 text-sm"
+                                className="text-amber-500 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 text-sm"
                             >
                                 Dismiss
                             </button>
@@ -523,17 +427,17 @@ export default function CalendarPage() {
 
                 {loading ? (
                     <div className="py-16 text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-500 mx-auto mb-4"></div>
-                        <p className="text-sm text-gray-500">Loading calendar...</p>
+                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-[var(--border-primary)] border-t-[var(--accent-primary)] mx-auto mb-4"></div>
+                        <p className="text-sm text-[var(--text-secondary)]">Loading calendar...</p>
                     </div>
                 ) : (
                     <>
                         {/* Day headers */}
-                        <div className="grid grid-cols-7 border-b border-gray-200">
+                        <div className="grid grid-cols-7 border-b border-[var(--border-primary)]">
                             {DAYS_OF_WEEK.map((day) => (
                                 <div
                                     key={day}
-                                    className="py-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                                    className="py-2 text-center text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider"
                                 >
                                     {day}
                                 </div>
@@ -623,17 +527,6 @@ export default function CalendarPage() {
                 />
             )}
 
-            {/* Posts PDF Export - Offscreen Render */}
-            {isExportingPostsPdf && (
-                <PostsPdfPrintRoot
-                    posts={Array.from(posts.values())}
-                    workspaceId={workspaceId}
-                    includeImages={pdfIncludeImages}
-                    onComplete={handlePostsPdfComplete}
-                    onError={handlePostsPdfError}
-                    onProgress={handlePostsPdfProgress}
-                />
-            )}
         </div>
     );
 }
@@ -696,14 +589,14 @@ function DayCell({
             onDrop={(e) => onDrop(e, dateStr)}
             onClick={onClick}
             className={`
-                relative min-h-[80px] md:min-h-[100px] p-1.5 border-b border-r border-gray-100
+                relative min-h-[80px] md:min-h-[100px] p-1.5 border-b border-r border-[var(--border-secondary)]
                 text-left transition-all cursor-pointer group
-                ${isCurrentMonth ? 'bg-white' : 'bg-gray-50/50'}
-                ${showWarningBg ? 'bg-yellow-50/30' : ''}
-                ${!isPast && isCurrentMonth ? 'hover:bg-gray-50' : ''}
-                ${isPast && isCurrentMonth ? 'hover:bg-gray-100/50' : ''}
-                ${isDragging ? 'opacity-50 ring-2 ring-teal-500 ring-inset' : ''}
-                ${isDropTarget ? 'bg-teal-100 ring-2 ring-teal-500 ring-inset' : ''}
+                ${isCurrentMonth ? 'bg-[var(--bg-card)]' : 'bg-[var(--bg-tertiary)]/50'}
+                ${showWarningBg ? 'bg-yellow-50/30 dark:bg-yellow-900/10' : ''}
+                ${!isPast && isCurrentMonth ? 'hover:bg-[var(--bg-tertiary)]' : ''}
+                ${isPast && isCurrentMonth ? 'hover:bg-[var(--bg-tertiary)]/50' : ''}
+                ${isDragging ? 'opacity-50 ring-2 ring-[var(--accent-primary)] ring-inset' : ''}
+                ${isDropTarget ? 'bg-[var(--accent-bg)] ring-2 ring-[var(--accent-primary)] ring-inset' : ''}
                 ${post ? 'cursor-grab active:cursor-grabbing' : ''}
             `}
         >
@@ -711,17 +604,17 @@ function DayCell({
             <div className="flex items-center justify-between mb-1">
                 <span className={`
                     inline-flex items-center justify-center w-6 h-6 text-xs font-medium rounded-full
-                    ${isToday ? 'bg-teal-600 text-white' : ''}
-                    ${!isToday && isCurrentMonth ? 'text-gray-900' : ''}
-                    ${!isToday && !isCurrentMonth ? 'text-gray-400' : ''}
-                    ${isPast && isCurrentMonth && !isToday ? 'text-gray-500' : ''}
+                    ${isToday ? 'bg-[var(--accent-primary)] text-white' : ''}
+                    ${!isToday && isCurrentMonth ? 'text-[var(--text-primary)]' : ''}
+                    ${!isToday && !isCurrentMonth ? 'text-[var(--text-muted)]' : ''}
+                    ${isPast && isCurrentMonth && !isToday ? 'text-[var(--text-tertiary)]' : ''}
                 `}>
                     {format(day, "d")}
                 </span>
 
                 {/* Skip reason indicator */}
                 {showWarningBg && (
-                    <span className="text-[8px] font-semibold text-yellow-700 bg-yellow-100 px-1 py-0.5 rounded uppercase">
+                    <span className="text-[8px] font-semibold text-yellow-700 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30 px-1 py-0.5 rounded uppercase">
                         Not Sent
                     </span>
                 )}
@@ -732,7 +625,7 @@ function DayCell({
                 <div className={`${wouldBeSkipped && post.status !== 'sent' ? 'opacity-60' : ''}`}>
                     {/* Thumbnail */}
                     {post.imageAssetId && (
-                        <div className="relative w-full h-10 md:h-14 mb-1 rounded overflow-hidden bg-gray-100">
+                        <div className="relative w-full h-10 md:h-14 mb-1 rounded overflow-hidden bg-[var(--bg-tertiary)]">
                             <AssetThumbnail
                                 assetId={post.imageAssetId}
                                 workspaceId={workspaceId}
@@ -743,7 +636,7 @@ function DayCell({
                     {/* Status indicator and time */}
                     <div className="flex items-center justify-between gap-1">
                         <StatusDot status={post.status} wouldBeSkipped={wouldBeSkipped} />
-                        <span className="text-[9px] text-gray-400">
+                        <span className="text-[9px] text-[var(--text-muted)]">
                             {formatTimeForDisplay(post.postingTime || randomTimeInWindow5Min(dateStr, dateStr))}
                         </span>
                     </div>
@@ -752,8 +645,8 @@ function DayCell({
 
             {/* Drop target indicator */}
             {isDropTarget && (
-                <div className="absolute inset-0 flex items-center justify-center bg-teal-500/10 pointer-events-none">
-                    <span className="text-xs font-medium text-teal-700 bg-white/90 px-2 py-1 rounded shadow">
+                <div className="absolute inset-0 flex items-center justify-center bg-[var(--accent-primary)]/10 pointer-events-none">
+                    <span className="text-xs font-medium text-[var(--accent-primary)] bg-[var(--bg-card)]/90 px-2 py-1 rounded shadow">
                         Drop here
                     </span>
                 </div>
@@ -764,15 +657,15 @@ function DayCell({
 
 function StatusDot({ status, wouldBeSkipped }: { status: PostDay['status']; wouldBeSkipped: boolean }) {
     const statusColors: Record<PostDay['status'], { bg: string; text: string; label: string }> = {
-        input: { bg: 'bg-gray-200', text: 'text-gray-600', label: 'Input' },
-        generated: { bg: 'bg-amber-200', text: 'text-amber-700', label: 'Generated' },
-        edited: { bg: 'bg-blue-200', text: 'text-blue-700', label: 'Edited' },
-        sent: { bg: 'bg-green-200', text: 'text-green-700', label: 'Sent' },
-        error: { bg: 'bg-red-200', text: 'text-red-700', label: 'Error' },
+        input: { bg: 'bg-gray-200 dark:bg-gray-700', text: 'text-gray-600 dark:text-gray-300', label: 'Input' },
+        generated: { bg: 'bg-amber-200 dark:bg-amber-900/50', text: 'text-amber-700 dark:text-amber-400', label: 'Generated' },
+        edited: { bg: 'bg-blue-200 dark:bg-blue-900/50', text: 'text-blue-700 dark:text-blue-400', label: 'Edited' },
+        sent: { bg: 'bg-green-200 dark:bg-green-900/50', text: 'text-green-700 dark:text-green-400', label: 'Sent' },
+        error: { bg: 'bg-red-200 dark:bg-red-900/50', text: 'text-red-700 dark:text-red-400', label: 'Error' },
     };
 
     // UI-only override: show "Not Sent" yellow pill for skipped posts
-    const notSentStyle = { bg: 'bg-yellow-200', text: 'text-yellow-700', label: 'Not Sent' };
+    const notSentStyle = { bg: 'bg-yellow-200 dark:bg-yellow-900/50', text: 'text-yellow-700 dark:text-yellow-400', label: 'Not Sent' };
 
     // Status priority:
     // 1. 'sent' always shows green Sent

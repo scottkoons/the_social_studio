@@ -663,9 +663,9 @@ export default function CSVImport() {
 
     return (
         <div className="relative">
-            <label className="inline-flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer">
+            <label className="inline-flex items-center gap-2 bg-[var(--bg-card)] border border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)] px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer">
                 {isImporting || importingImages ? (
-                    <span className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-teal-500" />
+                    <span className="animate-spin rounded-full h-4 w-4 border-2 border-[var(--border-primary)] border-t-[var(--accent-primary)]" />
                 ) : (
                     <FileDown size={16} />
                 )}
@@ -689,10 +689,10 @@ export default function CSVImport() {
             {status && (
                 <div className={`absolute top-full mt-2 right-0 w-80 p-3 rounded-lg shadow-lg border z-20 ${
                     status.type === 'success'
-                        ? 'bg-green-50 border-green-100 text-green-700'
+                        ? 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-800 text-green-700 dark:text-green-300'
                         : status.type === 'warn'
-                        ? 'bg-yellow-50 border-yellow-100 text-yellow-700'
-                        : 'bg-red-50 border-red-100 text-red-700'
+                        ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-100 dark:border-yellow-800 text-yellow-700 dark:text-yellow-300'
+                        : 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800 text-red-700 dark:text-red-300'
                 }`}>
                     <div className="flex gap-2">
                         {status.type === 'success' ? (
@@ -792,15 +792,15 @@ export default function CSVImport() {
             {/* Duplicate Confirmation Modal */}
             {showModal && currentDuplicate && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+                    <div className="bg-[var(--bg-card)] rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
                         {/* Header */}
-                        <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                            <h3 className="font-semibold text-gray-900">
+                        <div className="bg-[var(--bg-secondary)] px-6 py-4 border-b border-[var(--border-primary)] flex items-center justify-between">
+                            <h3 className="font-semibold text-[var(--text-primary)]">
                                 Duplicate Found ({currentDuplicateIndex + 1} of {duplicates.length})
                             </h3>
                             <button
                                 onClick={handleCancel}
-                                className="text-gray-400 hover:text-gray-600 transition-colors"
+                                className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
                             >
                                 <X size={20} />
                             </button>
@@ -808,30 +808,30 @@ export default function CSVImport() {
 
                         {/* Content */}
                         <div className="px-6 py-4 space-y-4">
-                            <p className="text-sm text-gray-600">
-                                A post for <span className="font-bold text-gray-900">{formatDisplayDate(currentDuplicate.row.date)}</span> already exists.
+                            <p className="text-sm text-[var(--text-secondary)]">
+                                A post for <span className="font-bold text-[var(--text-primary)]">{formatDisplayDate(currentDuplicate.row.date)}</span> already exists.
                             </p>
 
                             {/* Comparison */}
                             <div className="grid grid-cols-2 gap-3 text-xs">
-                                <div className="bg-gray-50 rounded-lg p-3">
-                                    <p className="font-bold text-gray-400 uppercase tracking-wider mb-1">Existing</p>
-                                    <p className="text-gray-700 line-clamp-3">
-                                        {currentDuplicate.existingData.starterText || <span className="italic text-gray-400">(empty)</span>}
+                                <div className="bg-[var(--bg-tertiary)] rounded-lg p-3">
+                                    <p className="font-bold text-[var(--text-tertiary)] uppercase tracking-wider mb-1">Existing</p>
+                                    <p className="text-[var(--text-secondary)] line-clamp-3">
+                                        {currentDuplicate.existingData.starterText || <span className="italic text-[var(--text-muted)]">(empty)</span>}
                                     </p>
                                     {currentDuplicate.existingData.imageAssetId && (
-                                        <p className="text-teal-600 text-[10px] mt-1 flex items-center gap-1">
+                                        <p className="text-[var(--accent-primary)] text-[10px] mt-1 flex items-center gap-1">
                                             <Image size={10} /> Has image
                                         </p>
                                     )}
                                 </div>
-                                <div className="bg-teal-50 rounded-lg p-3">
-                                    <p className="font-bold text-teal-600 uppercase tracking-wider mb-1">New (CSV)</p>
-                                    <p className="text-gray-700 line-clamp-3">
-                                        {currentDuplicate.row.starterText || <span className="italic text-gray-400">(empty)</span>}
+                                <div className="bg-[var(--accent-bg)] rounded-lg p-3">
+                                    <p className="font-bold text-[var(--accent-primary)] uppercase tracking-wider mb-1">New (CSV)</p>
+                                    <p className="text-[var(--text-secondary)] line-clamp-3">
+                                        {currentDuplicate.row.starterText || <span className="italic text-[var(--text-muted)]">(empty)</span>}
                                     </p>
                                     {currentDuplicate.row.imageUrl && (
-                                        <p className="text-teal-600 text-[10px] mt-1 flex items-center gap-1">
+                                        <p className="text-[var(--accent-primary)] text-[10px] mt-1 flex items-center gap-1">
                                             <Image size={10} /> Has imageUrl
                                         </p>
                                     )}
@@ -845,39 +845,39 @@ export default function CSVImport() {
                                         type="checkbox"
                                         checked={applyToAll}
                                         onChange={(e) => setApplyToAll(e.target.checked)}
-                                        className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                                        className="rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] bg-[var(--input-bg)]"
                                     />
-                                    <span className="text-gray-700">Apply to all duplicates</span>
+                                    <span className="text-[var(--text-secondary)]">Apply to all duplicates</span>
                                 </label>
                                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                                     <input
                                         type="checkbox"
                                         checked={overwriteEmptyOnly}
                                         onChange={(e) => setOverwriteEmptyOnly(e.target.checked)}
-                                        className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                                        className="rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] bg-[var(--input-bg)]"
                                     />
-                                    <span className="text-gray-700">Overwrite empty fields only</span>
+                                    <span className="text-[var(--text-secondary)]">Overwrite empty fields only</span>
                                 </label>
                             </div>
                         </div>
 
                         {/* Actions */}
-                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-2">
+                        <div className="px-6 py-4 bg-[var(--bg-secondary)] border-t border-[var(--border-primary)] flex justify-end gap-2">
                             <button
                                 onClick={handleCancel}
-                                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors"
+                                className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={() => handleDuplicateAction("skip")}
-                                className="px-4 py-2 text-sm font-medium bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition-colors"
+                                className="px-4 py-2 text-sm font-medium bg-[var(--bg-tertiary)] hover:bg-[var(--bg-card-hover)] text-[var(--text-secondary)] rounded-lg transition-colors"
                             >
                                 Skip
                             </button>
                             <button
                                 onClick={() => handleDuplicateAction(overwriteEmptyOnly ? "overwrite-empty" : "overwrite")}
-                                className="px-4 py-2 text-sm font-medium bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors"
+                                className="px-4 py-2 text-sm font-medium bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] text-white rounded-lg transition-colors"
                             >
                                 Overwrite
                             </button>

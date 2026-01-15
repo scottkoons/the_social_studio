@@ -107,10 +107,10 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
     if (asset) {
         return (
             <>
-                <div className="relative h-16 w-28 bg-gray-100 rounded-lg overflow-hidden group/img border border-gray-200">
+                <div className="relative h-16 w-28 bg-[var(--bg-tertiary)] rounded-lg overflow-hidden group/img border border-[var(--border-primary)]">
                     {/* Fallback icon while loading */}
                     <div className="absolute inset-0 flex items-center justify-center">
-                        <ImageIcon className="text-gray-300" size={20} />
+                        <ImageIcon className="text-[var(--text-muted)]" size={20} />
                     </div>
 
                     {/* Actual image with object-contain to preserve aspect ratio */}
@@ -140,7 +140,7 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
                     </div>
 
                     {/* Filename badge */}
-                    <div className="absolute bottom-0.5 right-0.5 bg-white/90 px-1 py-0.5 rounded text-[8px] font-medium text-gray-600 max-w-[100px] truncate">
+                    <div className="absolute bottom-0.5 right-0.5 bg-[var(--bg-card)]/90 px-1 py-0.5 rounded text-[8px] font-medium text-[var(--text-secondary)] max-w-[100px] truncate">
                         {asset.fileName}
                     </div>
                 </div>
@@ -166,8 +166,8 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
                 relative h-16 w-28 rounded-lg border-2 border-dashed transition-all cursor-pointer
                 flex flex-col items-center justify-center text-center
                 ${isDragActive
-                    ? 'border-teal-500 bg-teal-50 text-teal-600'
-                    : 'border-gray-200 text-gray-400 hover:border-teal-400 hover:bg-gray-50'
+                    ? 'border-[var(--accent-primary)] bg-[var(--accent-bg)] text-[var(--accent-primary)]'
+                    : 'border-[var(--border-primary)] text-[var(--text-tertiary)] hover:border-[var(--accent-primary)] hover:bg-[var(--bg-tertiary)]'
                 }
             `}
         >

@@ -174,8 +174,8 @@ export default function InputPage() {
             <div className="p-4 md:p-8 max-w-7xl mx-auto">
                 <DashboardCard>
                     <div className="py-16 text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-500 mx-auto mb-4"></div>
-                        <p className="text-sm text-gray-500">Setting up your workspace...</p>
+                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-[var(--border-primary)] border-t-[var(--accent-primary)] mx-auto mb-4"></div>
+                        <p className="text-sm text-[var(--text-secondary)]">Setting up your workspace...</p>
                     </div>
                 </DashboardCard>
             </div>
@@ -193,7 +193,7 @@ export default function InputPage() {
                             <button
                                 onClick={handleDeleteClick}
                                 disabled={isDeleting}
-                                className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="inline-flex items-center gap-2 bg-[var(--status-error)] hover:opacity-90 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <Trash2 size={16} />
                                 Delete ({selectedIds.size})
@@ -202,7 +202,7 @@ export default function InputPage() {
                         <CSVImport />
                         <button
                             onClick={addRow}
-                            className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+                            className="inline-flex items-center gap-2 bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
                         >
                             <Plus size={16} />
                             Add Row
@@ -214,8 +214,8 @@ export default function InputPage() {
             <DashboardCard noPadding>
                 {loading ? (
                     <div className="py-16 text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-teal-500 mx-auto mb-4"></div>
-                        <p className="text-sm text-gray-500">Loading your schedule...</p>
+                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-[var(--border-primary)] border-t-[var(--accent-primary)] mx-auto mb-4"></div>
+                        <p className="text-sm text-[var(--text-secondary)]">Loading your schedule...</p>
                     </div>
                 ) : (
                     <InputTable
@@ -241,14 +241,14 @@ export default function InputPage() {
             {/* Delete Confirmation Modal */}
             {showDeleteModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
+                    <div className="bg-[var(--bg-card)] rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
                         {/* Header */}
-                        <div className="bg-gray-50 px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-                            <h3 className="font-semibold text-gray-900">Delete posts?</h3>
+                        <div className="bg-[var(--bg-secondary)] px-5 py-4 border-b border-[var(--border-primary)] flex items-center justify-between">
+                            <h3 className="font-semibold text-[var(--text-primary)]">Delete posts?</h3>
                             <button
                                 onClick={() => setShowDeleteModal(false)}
                                 disabled={isDeleting}
-                                className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+                                className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors disabled:opacity-50"
                             >
                                 <X size={20} />
                             </button>
@@ -256,27 +256,27 @@ export default function InputPage() {
 
                         {/* Content */}
                         <div className="px-5 py-5">
-                            <p className="text-gray-600">
-                                This will permanently delete <span className="font-semibold text-gray-900">{selectedIds.size}</span> scheduled post{selectedIds.size !== 1 ? 's' : ''}.
+                            <p className="text-[var(--text-secondary)]">
+                                This will permanently delete <span className="font-semibold text-[var(--text-primary)]">{selectedIds.size}</span> scheduled post{selectedIds.size !== 1 ? 's' : ''}.
                             </p>
-                            <p className="text-sm text-gray-500 mt-2">
+                            <p className="text-sm text-[var(--text-tertiary)] mt-2">
                                 This action cannot be undone. Associated images will not be deleted.
                             </p>
                         </div>
 
                         {/* Actions */}
-                        <div className="px-5 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
+                        <div className="px-5 py-4 bg-[var(--bg-secondary)] border-t border-[var(--border-primary)] flex justify-end gap-3">
                             <button
                                 onClick={() => setShowDeleteModal(false)}
                                 disabled={isDeleting}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors disabled:opacity-50"
+                                className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleDeleteConfirm}
                                 disabled={isDeleting}
-                                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-[var(--status-error)] hover:opacity-90 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {isDeleting ? (
                                     <>
