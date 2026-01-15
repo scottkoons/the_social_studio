@@ -29,11 +29,11 @@ export default function InputTable({ posts, selectedIds, onSelectRow, onSelectAl
     }
 
     return (
-        <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+        <div className="overflow-x-auto -mx-4 md:mx-0">
+            <table className="w-full text-sm min-w-[600px] md:min-w-0">
                 <thead>
                     <tr className="bg-[var(--table-header-bg)] border-b border-[var(--border-primary)]">
-                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-4 py-3 w-12 z-10">
+                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-3 md:px-4 py-3 w-10 md:w-12 z-10">
                             <input
                                 type="checkbox"
                                 checked={allSelected}
@@ -41,22 +41,22 @@ export default function InputTable({ posts, selectedIds, onSelectRow, onSelectAl
                                     if (el) el.indeterminate = someSelected && !allSelected;
                                 }}
                                 onChange={(e) => onSelectAll(e.target.checked)}
-                                className="h-4 w-4 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-offset-0 cursor-pointer bg-[var(--input-bg)]"
+                                className="h-5 w-5 md:h-4 md:w-4 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-offset-0 cursor-pointer bg-[var(--input-bg)]"
                             />
                         </th>
-                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider w-24 z-10">
+                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 md:px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10">
                             Platform
                         </th>
-                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider w-36 z-10">
+                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 md:px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10">
                             Date
                         </th>
-                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider w-36 z-10">
+                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 md:px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10">
                             Image
                         </th>
-                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10">
+                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 md:px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10 hidden sm:table-cell">
                             Starter Text
                         </th>
-                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-4 py-3 text-right text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider w-28 z-10">
+                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 md:px-4 py-3 text-right text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10">
                             Status
                         </th>
                     </tr>

@@ -31,7 +31,7 @@ export default function RootLayout({
             <ClientOnly>
               <AuthGuard>
                 <Navbar />
-                <main className="pt-16 min-h-screen">{children}</main>
+                <main className="pt-14 md:pt-16 min-h-screen">{children}</main>
               </AuthGuard>
             </ClientOnly>
           </AuthProvider>

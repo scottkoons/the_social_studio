@@ -56,7 +56,6 @@ export default function PlatformPlanCard({
     // Plan generation state
     const [postsPerWeek, setPostsPerWeek] = useState(defaultPostsPerWeek);
     const [generatedPlan, setGeneratedPlan] = useState<GeneratedPlan | null>(null);
-    const [isGenerating, setIsGenerating] = useState(false);
 
     // CSV state
     const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -76,13 +75,17 @@ export default function PlatformPlanCard({
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Reset plan when dates change
+    // Reset ALL state when dates change - single source of truth from parent
     useEffect(() => {
         setGeneratedPlan(null);
         setSchedulePreview(null);
         setCsvFile(null);
         setCsvRows([]);
         setValidationErrors([]);
+        setExistingPlatformDates(new Set()); // Clear immediately before async refetch
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
     }, [startDate, endDate]);
 
     // Fetch existing posts for THIS PLATFORM when dates change
@@ -123,19 +126,18 @@ export default function PlatformPlanCard({
     const handleGeneratePlan = () => {
         if (!startDate || !endDate || postsPerWeek < 1) return;
 
-        setIsGenerating(true);
         setValidationErrors([]);
         setCsvFile(null);
         setCsvRows([]);
         setSchedulePreview(null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
 
-        // Small delay for UI feedback
-        setTimeout(() => {
-            const plan = buildPlanSlots(startDate, endDate, postsPerWeek, existingPlatformDates);
-            plan.platform = platform;
-            setGeneratedPlan(plan);
-            setIsGenerating(false);
-        }, 300);
+        // Generate plan synchronously using current prop values (no setTimeout to avoid stale closures)
+        const plan = buildPlanSlots(startDate, endDate, postsPerWeek, existingPlatformDates);
+        plan.platform = platform;
+        setGeneratedPlan(plan);
     };
 
     const handleResetPlan = () => {
@@ -308,20 +310,11 @@ export default function PlatformPlanCard({
                     <div className="flex items-center gap-2">
                         <button
                             onClick={handleGeneratePlan}
-                            disabled={!datesValid || postsPerWeek < 1 || isGenerating || isApplying}
+                            disabled={!datesValid || postsPerWeek < 1 || isApplying}
                             className={`flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium ${platformColors.bg} ${platformColors.text} border ${platformColors.border} rounded-lg transition-colors hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed`}
                         >
-                            {isGenerating ? (
-                                <>
-                                    <Loader2 className="animate-spin" size={16} />
-                                    Generating...
-                                </>
-                            ) : (
-                                <>
-                                    <CalendarDays size={16} />
-                                    Generate Plan
-                                </>
-                            )}
+                            <CalendarDays size={16} />
+                            Generate Plan
                         </button>
 
                         {generatedPlan && (

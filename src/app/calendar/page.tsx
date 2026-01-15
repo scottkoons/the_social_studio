@@ -24,6 +24,7 @@ import CalendarPdfPrintRoot from "@/components/CalendarPdfPrintRoot";
 import { PdfExportProgress, getPhaseText } from "@/lib/calendarPdfExport";
 
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAYS_OF_WEEK_SHORT = ["S", "M", "T", "W", "T", "F", "S"];
 
 // Drag and drop data type
 interface DragData {
@@ -355,60 +356,60 @@ export default function CalendarPage() {
 
             <DashboardCard noPadding>
                 {/* Month navigation */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-primary)]">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-3 md:px-4 py-3 border-b border-[var(--border-primary)]">
                     <div className="flex items-center gap-2">
                         <button
                             onClick={goToPreviousMonth}
-                            className="p-1.5 rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors"
+                            className="p-2 md:p-1.5 rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors"
                             aria-label="Previous month"
                         >
                             <ChevronLeft size={20} className="text-[var(--text-secondary)]" />
                         </button>
                         <button
                             onClick={goToNextMonth}
-                            className="p-1.5 rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors"
+                            className="p-2 md:p-1.5 rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors"
                             aria-label="Next month"
                         >
                             <ChevronRight size={20} className="text-[var(--text-secondary)]" />
                         </button>
-                        <h2 className="text-lg font-semibold text-[var(--text-primary)] ml-2">
+                        <h2 className="text-base md:text-lg font-semibold text-[var(--text-primary)] ml-2">
                             {format(currentMonth, "MMMM yyyy")}
                         </h2>
-                    </div>
-                    <div className="flex items-center gap-3">
                         <button
                             onClick={goToToday}
-                            className="px-3 py-1.5 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
+                            className="ml-auto sm:ml-0 px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
                         >
                             Today
                         </button>
-
+                    </div>
+                    <div className="flex items-center gap-2 md:gap-3 flex-wrap">
                         {/* Platform Filter */}
-                        <div className="pl-2 border-l border-[var(--border-primary)]">
+                        <div className="sm:pl-2 sm:border-l border-[var(--border-primary)]">
                             <PlatformFilter value={platformFilter} onChange={setPlatformFilter} />
                         </div>
 
                         {/* PDF Export Controls */}
                         <div className="flex items-center gap-2 pl-2 border-l border-[var(--border-primary)]">
-                            <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+                            <label className="hidden md:flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
                                 <input
                                     type="checkbox"
                                     checked={pdfIncludeImages}
                                     onChange={(e) => setPdfIncludeImages(e.target.checked)}
                                     disabled={isExportingPdf}
-                                    className="h-3.5 w-3.5 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] disabled:opacity-50 bg-[var(--input-bg)]"
+                                    className="h-4 w-4 md:h-3.5 md:w-3.5 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] disabled:opacity-50 bg-[var(--input-bg)]"
                                 />
                                 Include images
                             </label>
                             <button
                                 onClick={handleExportPdf}
                                 disabled={isExportingPdf || posts.size === 0}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                                className="flex items-center gap-1.5 px-2 md:px-3 py-1.5 text-xs md:text-sm font-medium text-white bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                                title="Export Calendar as PDF"
                             >
                                 {isExportingPdf ? (
                                     <>
                                         <Loader2 size={14} className="animate-spin" />
-                                        <span className="max-w-[180px] truncate">
+                                        <span className="hidden sm:inline max-w-[180px] truncate">
                                             {pdfProgress
                                                 ? getPhaseText(pdfProgress)
                                                 : "Preparing..."}
@@ -417,7 +418,7 @@ export default function CalendarPage() {
                                 ) : (
                                     <>
                                         <Download size={14} />
-                                        Calendar PDF
+                                        <span className="hidden sm:inline">Calendar PDF</span>
                                     </>
                                 )}
                             </button>
@@ -466,12 +467,13 @@ export default function CalendarPage() {
                     <>
                         {/* Day headers */}
                         <div className="grid grid-cols-7 border-b border-[var(--border-primary)]">
-                            {DAYS_OF_WEEK.map((day) => (
+                            {DAYS_OF_WEEK.map((day, idx) => (
                                 <div
                                     key={day}
                                     className="py-2 text-center text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider"
                                 >
-                                    {day}
+                                    <span className="hidden sm:inline">{day}</span>
+                                    <span className="sm:hidden">{DAYS_OF_WEEK_SHORT[idx]}</span>
                                 </div>
                             ))}
                         </div>

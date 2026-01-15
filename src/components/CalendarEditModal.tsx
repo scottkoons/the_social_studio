@@ -404,21 +404,21 @@ export default function CalendarEditModal({
         >
             <div className="bg-[var(--bg-card)] rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-primary)] bg-[var(--bg-secondary)]">
+                <div className="flex items-center justify-between px-4 md:px-5 py-3 md:py-4 border-b border-[var(--border-primary)] bg-[var(--bg-secondary)]">
                     <div className="flex items-center gap-2">
                         <PlatformBadge platform={post.platform} />
-                        <h2 className="font-semibold text-[var(--text-primary)]">Edit Post - {formatDisplayDate(post.date)}</h2>
+                        <h2 className="font-semibold text-sm md:text-base text-[var(--text-primary)]">Edit Post - {formatDisplayDate(post.date)}</h2>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors"
+                        className="p-2 md:p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors"
                     >
                         <X size={20} />
                     </button>
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                <div className="flex-1 overflow-y-auto p-4 md:p-5 space-y-4 md:space-y-5">
                     {/* Image section */}
                     <div>
                         <label className="block text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
@@ -477,7 +477,7 @@ export default function CalendarEditModal({
                     </div>
 
                     {/* Date and Time */}
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
                         <div>
                             <label className="block text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
                                 Date
@@ -486,7 +486,7 @@ export default function CalendarEditModal({
                                 type="date"
                                 value={date}
                                 onChange={(e) => handleDateChange(e.target.value)}
-                                className="w-full px-3 py-2 border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg text-sm text-[var(--text-primary)] focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)]"
+                                className="w-full px-3 py-2.5 md:py-2 border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg text-sm text-[var(--text-primary)] focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)]"
                             />
                         </div>
                         <div>
@@ -498,7 +498,7 @@ export default function CalendarEditModal({
                                 value={postingTime}
                                 onChange={(e) => handleTimeChange(e.target.value)}
                                 step="300"
-                                className="w-full px-3 py-2 border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg text-sm text-[var(--text-primary)] focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)]"
+                                className="w-full px-3 py-2.5 md:py-2 border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg text-sm text-[var(--text-primary)] focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)]"
                             />
                             <p className="text-[10px] text-[var(--text-muted)] mt-1">
                                 {getWindowDescription(date)}
@@ -584,7 +584,7 @@ export default function CalendarEditModal({
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-between px-5 py-4 border-t border-[var(--border-primary)] bg-[var(--bg-secondary)]">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 md:px-5 py-3 md:py-4 border-t border-[var(--border-primary)] bg-[var(--bg-secondary)]">
                     <div className="flex gap-2">
                         <button
                             onClick={() => setShowDeleteConfirm(true)}
@@ -601,7 +601,7 @@ export default function CalendarEditModal({
                             Duplicate
                         </button>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 justify-end">
                         <button
                             onClick={onClose}
                             className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"

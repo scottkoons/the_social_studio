@@ -152,42 +152,42 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
             `}
         >
             {/* Checkbox */}
-            <td className="px-4 py-4 align-top">
+            <td className="px-3 md:px-4 py-3 md:py-4 align-top">
                 <input
                     type="checkbox"
                     checked={isSelected}
                     onChange={(e) => onSelect(docId, e.target.checked)}
-                    className="h-4 w-4 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-offset-0 cursor-pointer bg-[var(--input-bg)]"
+                    className="h-5 w-5 md:h-4 md:w-4 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-offset-0 cursor-pointer bg-[var(--input-bg)]"
                 />
             </td>
 
             {/* Platform */}
-            <td className="px-4 py-4 align-top">
+            <td className="px-2 md:px-4 py-3 md:py-4 align-top">
                 <PlatformBadge platform={post.platform} />
             </td>
 
             {/* Date */}
-            <td className="px-4 py-4 align-top">
-                <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-[var(--text-primary)]">
+            <td className="px-2 md:px-4 py-3 md:py-4 align-top">
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-1 md:gap-2">
+                        <span className="text-xs md:text-sm font-medium text-[var(--text-primary)] whitespace-nowrap">
                             {formatDisplayDate(post.date)}
                         </span>
                         <input
                             type="date"
                             value={post.date}
                             onChange={(e) => handleDateChange(e.target.value)}
-                            className="w-5 h-5 opacity-0 hover:opacity-100 focus:opacity-100 cursor-pointer"
+                            className="w-6 h-6 md:w-5 md:h-5 opacity-50 md:opacity-0 hover:opacity-100 focus:opacity-100 cursor-pointer"
                             title="Change date"
                         />
                     </div>
                     {isPast && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 w-fit uppercase tracking-wide">
-                            Past date
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] md:text-[10px] font-semibold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 w-fit uppercase tracking-wide">
+                            Past
                         </span>
                     )}
                     {error && (
-                        <span className="text-[10px] text-[var(--status-error)] flex items-center gap-1">
+                        <span className="text-[9px] md:text-[10px] text-[var(--status-error)] flex items-center gap-1">
                             <AlertCircle size={10} />
                             {error}
                         </span>
@@ -196,7 +196,7 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
             </td>
 
             {/* Image */}
-            <td className="px-4 py-4 align-top">
+            <td className="px-2 md:px-4 py-3 md:py-4 align-top">
                 <ImageUpload
                     post={post}
                     onUploadStart={() => setIsSaving(true)}
@@ -204,8 +204,8 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
                 />
             </td>
 
-            {/* Starter Text */}
-            <td className="px-4 py-4 align-top">
+            {/* Starter Text - hidden on mobile */}
+            <td className="px-2 md:px-4 py-3 md:py-4 align-top hidden sm:table-cell">
                 <textarea
                     value={starterText}
                     onChange={(e) => setStarterText(e.target.value)}
@@ -215,7 +215,7 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
             </td>
 
             {/* Status */}
-            <td className="px-4 py-4 align-top text-right">
+            <td className="px-2 md:px-4 py-3 md:py-4 align-top text-right">
                 <div className="flex items-center justify-end">
                     {isSaving ? (
                         <Loader2 className="animate-spin text-[var(--accent-primary)]" size={16} />
