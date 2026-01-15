@@ -27,7 +27,8 @@ interface PlatformPlanCardProps {
     platform: Platform;
     startDate: string;  // Shared from parent
     endDate: string;    // Shared from parent
-    defaultPostsPerWeek: number;  // FB=3, IG=4
+    defaultPostsPerWeek: number;  // FB=4, IG=6
+    recommendedRange: string;  // e.g., "4–6" or "6–7"
     onComplete: (count: number) => void;
 }
 
@@ -47,6 +48,7 @@ export default function PlatformPlanCard({
     startDate,
     endDate,
     defaultPostsPerWeek,
+    recommendedRange,
     onComplete
 }: PlatformPlanCardProps) {
     const { workspaceId } = useAuth();
@@ -280,9 +282,14 @@ export default function PlatformPlanCard({
                 {/* Posts Per Week Control */}
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium text-[var(--text-primary)]">
-                            Posts per Week
-                        </label>
+                        <div>
+                            <label className="text-sm font-medium text-[var(--text-primary)]">
+                                Posts per Week
+                            </label>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                                Recommended: {recommendedRange}/week
+                            </p>
+                        </div>
                         <input
                             type="number"
                             min={1}

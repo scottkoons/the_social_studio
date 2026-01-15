@@ -109,7 +109,8 @@ export default function PlanningPage() {
                     platform="facebook"
                     startDate={startDate}
                     endDate={endDate}
-                    defaultPostsPerWeek={3}
+                    defaultPostsPerWeek={4}
+                    recommendedRange="4–6"
                     onComplete={handleFacebookComplete}
                 />
 
@@ -118,7 +119,8 @@ export default function PlanningPage() {
                     platform="instagram"
                     startDate={startDate}
                     endDate={endDate}
-                    defaultPostsPerWeek={4}
+                    defaultPostsPerWeek={6}
+                    recommendedRange="6–7"
                     onComplete={handleInstagramComplete}
                 />
             </div>
