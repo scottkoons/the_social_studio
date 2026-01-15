@@ -11,7 +11,9 @@ import DashboardCard from "@/components/ui/DashboardCard";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
 import { format, startOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, isSameMonth } from "date-fns";
-import { PostDay } from "@/lib/types";
+import { PostDay, getPostDocId } from "@/lib/types";
+import PlatformFilter from "@/components/ui/PlatformFilter";
+import type { PlatformFilterValue } from "@/components/ReviewTable";
 import { getTodayInDenver, formatDisplayDate } from "@/lib/utils";
 import { formatTimeForDisplay, randomTimeInWindow5Min } from "@/lib/postingTime";
 import { movePostDay } from "@/lib/postDayMove";
@@ -25,7 +27,7 @@ const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 // Drag and drop data type
 interface DragData {
-    sourceDate: string;
+    sourceDocId: string;
     post: PostDay;
 }
 
@@ -33,8 +35,9 @@ export default function CalendarPage() {
     const { user, workspaceId, workspaceLoading } = useAuth();
     const router = useRouter();
     const [currentMonth, setCurrentMonth] = useState(new Date());
-    const [posts, setPosts] = useState<Map<string, PostDay>>(new Map());
+    const [posts, setPosts] = useState<Map<string, PostDay>>(new Map()); // Keyed by docId
     const [loading, setLoading] = useState(true);
+    const [platformFilter, setPlatformFilter] = useState<PlatformFilterValue>("all");
 
     // Drag and drop state
     const [draggedPost, setDraggedPost] = useState<DragData | null>(null);
@@ -77,18 +80,22 @@ export default function CalendarPage() {
     useEffect(() => {
         if (!user || !workspaceId) return;
 
-        // Query using documentId bounds (doc IDs are YYYY-MM-DD)
+        // Query using documentId bounds
+        // Doc IDs can be "YYYY-MM-DD" (legacy) or "YYYY-MM-DD-platform" (new)
+        // Use "~" suffix on upper bound to include platform-suffixed docs
         const q = query(
             collection(db, "workspaces", workspaceId, "post_days"),
             where(documentId(), ">=", gridStartStr),
-            where(documentId(), "<=", gridEndStr)
+            where(documentId(), "<=", gridEndStr + "~")
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const postsMap = new Map<string, PostDay>();
-            snapshot.docs.forEach((doc) => {
-                const data = doc.data() as PostDay;
-                postsMap.set(data.date, data);
+            snapshot.docs.forEach((docSnap) => {
+                const data = docSnap.data() as PostDay;
+                // Store by docId for unique identification
+                const docId = docSnap.id;
+                postsMap.set(docId, { ...data, docId });
             });
             setPosts(postsMap);
             setLoading(false);
@@ -97,23 +104,44 @@ export default function CalendarPage() {
         return () => unsubscribe();
     }, [user, workspaceId, gridStartStr, gridEndStr]);
 
+    // Helper to get posts for a specific date, filtered by platform
+    const getPostsForDate = useCallback((dateStr: string): PostDay[] => {
+        const result: PostDay[] = [];
+        posts.forEach((post) => {
+            if (post.date !== dateStr) return;
+            // Apply platform filter
+            if (platformFilter !== "all") {
+                const postPlatform = post.platform || "facebook"; // Legacy posts default to facebook
+                if (postPlatform !== platformFilter) return;
+            }
+            result.push(post);
+        });
+        return result;
+    }, [posts, platformFilter]);
+
     const goToPreviousMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
     const goToNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
     const goToToday = () => setCurrentMonth(new Date());
 
     // Move post from one date to another using shared helper
-    const movePost = useCallback(async (sourceDate: string, targetDate: string, overwrite: boolean = false) => {
-        if (!workspaceId || sourceDate === targetDate) return;
+    const movePost = useCallback(async (sourceDocId: string, targetDate: string, overwrite: boolean = false) => {
+        if (!workspaceId) return;
 
-        const sourcePost = posts.get(sourceDate);
+        const sourcePost = posts.get(sourceDocId);
         if (!sourcePost) return;
 
+        // If same date, no-op
+        if (sourcePost.date === targetDate) return;
+
         setIsMoving(true);
-        const result = await movePostDay(workspaceId, sourceDate, targetDate, { overwrite });
+        const result = await movePostDay(workspaceId, sourceDocId, targetDate, {
+            overwrite,
+            platform: sourcePost.platform
+        });
 
         if (result.needsConfirmOverwrite) {
             // Show confirmation modal
-            setPendingDrop({ source: { sourceDate, post: sourcePost }, targetDate });
+            setPendingDrop({ source: { sourceDocId, post: sourcePost }, targetDate });
             setShowOverwriteModal(true);
             setIsMoving(false);
             return;
@@ -136,7 +164,7 @@ export default function CalendarPage() {
         }
         if (!pendingDrop) return;
         setShowOverwriteModal(false);
-        await movePost(pendingDrop.source.sourceDate, pendingDrop.targetDate, true);
+        await movePost(pendingDrop.source.sourceDocId, pendingDrop.targetDate, true);
         setPendingDrop(null);
     };
 
@@ -149,8 +177,8 @@ export default function CalendarPage() {
     };
 
     // Drag handlers
-    const handleDragStart = useCallback((dateStr: string, post: PostDay) => {
-        setDraggedPost({ sourceDate: dateStr, post });
+    const handleDragStart = useCallback((docId: string, post: PostDay) => {
+        setDraggedPost({ sourceDocId: docId, post });
     }, []);
 
     const handleDragEnd = useCallback(() => {
@@ -160,7 +188,7 @@ export default function CalendarPage() {
 
     const handleDragOver = useCallback((e: React.DragEvent, dateStr: string) => {
         e.preventDefault();
-        if (draggedPost && dateStr !== draggedPost.sourceDate) {
+        if (draggedPost && dateStr !== draggedPost.post.date) {
             setDropTarget(dateStr);
         }
     }, [draggedPost]);
@@ -171,8 +199,8 @@ export default function CalendarPage() {
 
     const handleDrop = useCallback((e: React.DragEvent, targetDate: string) => {
         e.preventDefault();
-        if (draggedPost && targetDate !== draggedPost.sourceDate) {
-            movePost(draggedPost.sourceDate, targetDate);
+        if (draggedPost && targetDate !== draggedPost.post.date) {
+            movePost(draggedPost.sourceDocId, targetDate);
         }
         setDropTarget(null);
     }, [draggedPost, movePost]);
@@ -204,8 +232,7 @@ export default function CalendarPage() {
         router.push(`/input?date=${dateStr}`);
     }, [router]);
 
-    const handleDayClick = (dateStr: string) => {
-        const post = posts.get(dateStr);
+    const handleDayClick = (dateStr: string, post?: PostDay) => {
         if (post) {
             handlePostClick(dateStr, post);
         } else {
@@ -356,6 +383,11 @@ export default function CalendarPage() {
                             Today
                         </button>
 
+                        {/* Platform Filter */}
+                        <div className="pl-2 border-l border-[var(--border-primary)]">
+                            <PlatformFilter value={platformFilter} onChange={setPlatformFilter} />
+                        </div>
+
                         {/* PDF Export Controls */}
                         <div className="flex items-center gap-2 pl-2 border-l border-[var(--border-primary)]">
                             <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
@@ -448,36 +480,28 @@ export default function CalendarPage() {
                         <div className="grid grid-cols-7">
                             {calendarDays.map((day) => {
                                 const dateStr = format(day, "yyyy-MM-dd");
-                                const rawPost = posts.get(dateStr);
+                                const postsForDate = getPostsForDate(dateStr);
                                 const isCurrentMonth = isSameMonth(day, currentMonth);
                                 const isToday = dateStr === todayStr;
                                 const isPast = dateStr < todayStr;
 
-                                // Check if this post should be hidden
-                                const isPostPastUnsent = isPast && !!rawPost && rawPost.status !== "sent";
-                                const shouldHidePost = hidePastUnsent && isPostPastUnsent;
-
-                                // If hiding past unsent, treat as no post for display
-                                const post = shouldHidePost ? undefined : rawPost;
-
-                                // Compute skip reasons for display
-                                const isMissingImage = !!post && !post.imageAssetId;
-                                const isPastDate = isPast && !!post;
-                                const wouldBeSkipped = isPastDate || isMissingImage;
+                                // Filter out past unsent posts if setting is enabled
+                                const visiblePosts = hidePastUnsent
+                                    ? postsForDate.filter(p => !isPast || p.status === "sent")
+                                    : postsForDate;
 
                                 return (
                                     <DayCell
                                         key={dateStr}
                                         dateStr={dateStr}
                                         day={day}
-                                        post={post}
+                                        posts={visiblePosts}
                                         isCurrentMonth={isCurrentMonth}
                                         isToday={isToday}
                                         isPast={isPast}
-                                        wouldBeSkipped={wouldBeSkipped}
-                                        onClick={() => handleDayClick(dateStr)}
+                                        onClick={(post?: PostDay) => handleDayClick(dateStr, post)}
                                         workspaceId={workspaceId}
-                                        isDragging={draggedPost?.sourceDate === dateStr}
+                                        isDragging={draggedPost?.post.date === dateStr}
                                         isDropTarget={dropTarget === dateStr}
                                         onDragStart={handleDragStart}
                                         onDragEnd={handleDragEnd}
@@ -534,30 +558,43 @@ export default function CalendarPage() {
 interface DayCellProps {
     dateStr: string;
     day: Date;
-    post: PostDay | undefined;
+    posts: PostDay[];
     isCurrentMonth: boolean;
     isToday: boolean;
     isPast: boolean;
-    wouldBeSkipped: boolean;
-    onClick: () => void;
+    onClick: (post?: PostDay) => void;
     workspaceId: string;
     isDragging: boolean;
     isDropTarget: boolean;
-    onDragStart: (dateStr: string, post: PostDay) => void;
+    onDragStart: (docId: string, post: PostDay) => void;
     onDragEnd: () => void;
     onDragOver: (e: React.DragEvent, dateStr: string) => void;
     onDragLeave: () => void;
     onDrop: (e: React.DragEvent, dateStr: string) => void;
 }
 
+// Platform badge for calendar cell
+function CalendarPlatformBadge({ platform }: { platform?: string }) {
+    const platformName = platform || "facebook";
+    const isFacebook = platformName === "facebook";
+    return (
+        <span className={`inline-flex items-center px-1 py-0.5 rounded text-[8px] font-semibold uppercase ${
+            isFacebook
+                ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
+                : "bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400"
+        }`}>
+            {isFacebook ? "FB" : "IG"}
+        </span>
+    );
+}
+
 function DayCell({
     dateStr,
     day,
-    post,
+    posts,
     isCurrentMonth,
     isToday,
     isPast,
-    wouldBeSkipped,
     onClick,
     workspaceId,
     isDragging,
@@ -568,36 +605,42 @@ function DayCell({
     onDragLeave,
     onDrop,
 }: DayCellProps) {
-    // Show warning background for posts that would be skipped (and not sent/error)
-    const showWarningBg = wouldBeSkipped && post && post.status !== 'sent' && post.status !== 'error';
+    const hasPosts = posts.length > 0;
+    const firstPost = posts[0];
 
-    const handleDragStart = (e: React.DragEvent) => {
-        if (post) {
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', dateStr);
-            onDragStart(dateStr, post);
-        }
+    // Check if any post would be skipped (past date or missing image)
+    const hasSkippedPost = posts.some(p => {
+        const isMissingImage = !p.imageAssetId;
+        const isPastDate = isPast;
+        return (isPastDate || isMissingImage) && p.status !== 'sent' && p.status !== 'error';
+    });
+
+    const handleDragStart = (e: React.DragEvent, post: PostDay) => {
+        const docId = getPostDocId(post);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', docId);
+        onDragStart(docId, post);
     };
 
     return (
         <div
-            draggable={!!post}
-            onDragStart={handleDragStart}
+            draggable={hasPosts}
+            onDragStart={(e) => firstPost && handleDragStart(e, firstPost)}
             onDragEnd={onDragEnd}
             onDragOver={(e) => onDragOver(e, dateStr)}
             onDragLeave={onDragLeave}
             onDrop={(e) => onDrop(e, dateStr)}
-            onClick={onClick}
+            onClick={() => onClick(firstPost)}
             className={`
                 relative min-h-[80px] md:min-h-[100px] p-1.5 border-b border-r border-[var(--border-secondary)]
                 text-left transition-all cursor-pointer group
                 ${isCurrentMonth ? 'bg-[var(--bg-card)]' : 'bg-[var(--bg-tertiary)]/50'}
-                ${showWarningBg ? 'bg-yellow-50/30 dark:bg-yellow-900/10' : ''}
+                ${hasSkippedPost ? 'bg-yellow-50/30 dark:bg-yellow-900/10' : ''}
                 ${!isPast && isCurrentMonth ? 'hover:bg-[var(--bg-tertiary)]' : ''}
                 ${isPast && isCurrentMonth ? 'hover:bg-[var(--bg-tertiary)]/50' : ''}
                 ${isDragging ? 'opacity-50 ring-2 ring-[var(--accent-primary)] ring-inset' : ''}
                 ${isDropTarget ? 'bg-[var(--accent-bg)] ring-2 ring-[var(--accent-primary)] ring-inset' : ''}
-                ${post ? 'cursor-grab active:cursor-grabbing' : ''}
+                ${hasPosts ? 'cursor-grab active:cursor-grabbing' : ''}
             `}
         >
             {/* Day number */}
@@ -612,22 +655,24 @@ function DayCell({
                     {format(day, "d")}
                 </span>
 
-                {/* Skip reason indicator */}
-                {showWarningBg && (
-                    <span className="text-[8px] font-semibold text-yellow-700 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30 px-1 py-0.5 rounded uppercase">
-                        Not Sent
-                    </span>
+                {/* Platform badges */}
+                {hasPosts && (
+                    <div className="flex gap-0.5">
+                        {posts.map((p) => (
+                            <CalendarPlatformBadge key={getPostDocId(p)} platform={p.platform} />
+                        ))}
+                    </div>
                 )}
             </div>
 
-            {/* Post content */}
-            {post && (
-                <div className={`${wouldBeSkipped && post.status !== 'sent' ? 'opacity-60' : ''}`}>
+            {/* Post content - show first post's thumbnail and status */}
+            {firstPost && (
+                <div className={`${hasSkippedPost ? 'opacity-60' : ''}`}>
                     {/* Thumbnail */}
-                    {post.imageAssetId && (
+                    {firstPost.imageAssetId && (
                         <div className="relative w-full h-10 md:h-14 mb-1 rounded overflow-hidden bg-[var(--bg-tertiary)]">
                             <AssetThumbnail
-                                assetId={post.imageAssetId}
+                                assetId={firstPost.imageAssetId}
                                 workspaceId={workspaceId}
                             />
                         </div>
@@ -635,11 +680,21 @@ function DayCell({
 
                     {/* Status indicator and time */}
                     <div className="flex items-center justify-between gap-1">
-                        <StatusDot status={post.status} wouldBeSkipped={wouldBeSkipped} />
+                        <StatusDot
+                            status={firstPost.status}
+                            wouldBeSkipped={(isPast || !firstPost.imageAssetId) && firstPost.status !== 'sent'}
+                        />
                         <span className="text-[9px] text-[var(--text-muted)]">
-                            {formatTimeForDisplay(post.postingTime || randomTimeInWindow5Min(dateStr, dateStr))}
+                            {formatTimeForDisplay(firstPost.postingTime || randomTimeInWindow5Min(dateStr, dateStr))}
                         </span>
                     </div>
+
+                    {/* Multiple posts indicator */}
+                    {posts.length > 1 && (
+                        <div className="mt-1 text-[8px] text-[var(--text-tertiary)] text-center">
+                            +{posts.length - 1} more
+                        </div>
+                    )}
                 </div>
             )}
 

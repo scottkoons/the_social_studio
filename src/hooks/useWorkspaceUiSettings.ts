@@ -38,7 +38,7 @@ const DEFAULT_UI_SETTINGS: WorkspaceUiSettings = {
 const DEFAULT_AI_SETTINGS: WorkspaceAiSettings = {
     brandVoice: "",
     hashtagStyle: "medium",
-    emojiStyle: "medium",
+    emojiStyle: "low",
 };
 
 const LOCAL_STORAGE_KEY = "workspaceSettings";

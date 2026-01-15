@@ -19,8 +19,12 @@ export interface PostDayAI {
     };
 }
 
+export type PostPlatform = "facebook" | "instagram";
+
 export interface PostDay {
-    date: string; // YYYY-MM-DD, also used as Firestore doc ID
+    docId?: string; // Firestore document ID (new format: YYYY-MM-DD-platform, legacy: YYYY-MM-DD)
+    date: string; // YYYY-MM-DD
+    platform?: PostPlatform; // facebook or instagram (legacy posts may not have this)
     starterText?: string;
     imageAssetId?: string;
     imageUrl?: string; // Direct download URL (set by importImageFromUrl)
@@ -35,8 +39,18 @@ export interface PostDay {
     updatedAt: Timestamp;
 }
 
+// Helper to get the document ID for a post
+export function getPostDocId(post: PostDay): string {
+    // Use docId if available (set when loading from Firestore)
+    if (post.docId) return post.docId;
+    // For new posts with platform, use date-platform format
+    if (post.platform) return `${post.date}-${post.platform}`;
+    // Legacy fallback: just the date
+    return post.date;
+}
+
 export type HashtagStyle = "light" | "medium" | "heavy";
-export type EmojiStyle = "none" | "light" | "medium";
+export type EmojiStyle = "low" | "medium" | "high";
 
 export interface WorkspaceAISettings {
     brandVoice: string;

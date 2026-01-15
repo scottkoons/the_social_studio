@@ -5,7 +5,7 @@ import { db } from "@/lib/firebase";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { isPastOrTodayInDenver, formatDisplayDate } from "@/lib/utils";
 import { movePostDay } from "@/lib/postDayMove";
-import { PostDay } from "@/lib/types";
+import { PostDay, getPostDocId } from "@/lib/types";
 import ImageUpload from "./ImageUpload";
 import StatusPill from "./ui/StatusPill";
 import ConfirmModal from "./ui/ConfirmModal";
@@ -21,6 +21,24 @@ interface TableRowProps {
     onHighlightClear: () => void;
 }
 
+// Platform badge component
+function PlatformBadge({ platform }: { platform?: string }) {
+    const platformName = platform || "facebook";
+    const isFacebook = platformName === "facebook";
+
+    return (
+        <span
+            className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
+                isFacebook
+                    ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
+                    : "bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400"
+            }`}
+        >
+            {isFacebook ? "FB" : "IG"}
+        </span>
+    );
+}
+
 export default function TableRow({ post, allPostDates, isSelected, onSelect, isHighlighted, onHighlightClear }: TableRowProps) {
     const { user, workspaceId } = useAuth();
     const [starterText, setStarterText] = useState(post.starterText || "");
@@ -28,6 +46,9 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
     const [error, setError] = useState<string | null>(null);
     const debounceTimer = useRef<NodeJS.Timeout | null>(null);
     const rowRef = useRef<HTMLTableRowElement>(null);
+
+    // Get the document ID for this post
+    const docId = getPostDocId(post);
 
     // Overwrite confirmation modal state
     const [showOverwriteModal, setShowOverwriteModal] = useState(false);
@@ -57,7 +78,7 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
             if (!user || !workspaceId) return;
             setIsSaving(true);
             try {
-                const docRef = doc(db, "workspaces", workspaceId, "post_days", post.date);
+                const docRef = doc(db, "workspaces", workspaceId, "post_days", docId);
                 await updateDoc(docRef, {
                     starterText,
                     updatedAt: serverTimestamp(),
@@ -72,7 +93,7 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
         return () => {
             if (debounceTimer.current) clearTimeout(debounceTimer.current);
         };
-    }, [starterText, post.date, post.starterText, user, workspaceId]);
+    }, [starterText, docId, post.starterText, user, workspaceId]);
 
     const handleDateChange = async (newDate: string) => {
         if (newDate === post.date || !user || !workspaceId) return;
@@ -80,7 +101,9 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
         setIsSaving(true);
         setError(null);
 
-        const result = await movePostDay(workspaceId, post.date, newDate, { overwrite: false });
+        // For platform-aware posts, we need to update the movePostDay logic
+        // For now, just update the date field in the existing document
+        const result = await movePostDay(workspaceId, docId, newDate, { overwrite: false, platform: post.platform });
 
         if (result.needsConfirmOverwrite) {
             setPendingNewDate(newDate);
@@ -103,7 +126,7 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
         setIsSaving(true);
         setError(null);
 
-        const result = await movePostDay(workspaceId, post.date, pendingNewDate, { overwrite: true });
+        const result = await movePostDay(workspaceId, docId, pendingNewDate, { overwrite: true, platform: post.platform });
 
         if (!result.ok) {
             setError(result.error || "Failed to change date.");
@@ -133,9 +156,14 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
                 <input
                     type="checkbox"
                     checked={isSelected}
-                    onChange={(e) => onSelect(post.date, e.target.checked)}
+                    onChange={(e) => onSelect(docId, e.target.checked)}
                     className="h-4 w-4 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-offset-0 cursor-pointer bg-[var(--input-bg)]"
                 />
+            </td>
+
+            {/* Platform */}
+            <td className="px-4 py-4 align-top">
+                <PlatformBadge platform={post.platform} />
             </td>
 
             {/* Date */}

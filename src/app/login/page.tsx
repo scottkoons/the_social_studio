@@ -31,19 +31,15 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-50 to-navy-50 p-4">
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#053a66]/10 to-navy-50 p-4">
             <div className="max-w-md w-full bg-white rounded-2xl shadow-xl shadow-teal-900/5 p-8 flex flex-col items-center">
-                <div className="relative w-20 h-20 mb-6">
-                    <Image
-                        src="/branding/the-social-studio-logo.png"
-                        alt="The Social Studio Logo"
-                        fill
-                        className="object-contain"
-                        sizes="80px"
-                    />
-                </div>
-
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">The Social Studio</h1>
+                <Image
+                    src="/branding/the-social-studio-logo.png"
+                    alt="The Social Studio Logo"
+                    width={300}
+                    height={100}
+                    className="h-auto mb-6"
+                />
                 <p className="text-gray-500 mb-8 text-center">
                     Your command center for effortless social media planning.
                 </p>
@@ -65,7 +61,7 @@ export default function LoginPage() {
                                 required
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all text-sm outline-none"
+                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all text-sm outline-none text-black placeholder:text-gray-400"
                                 placeholder="name@example.com"
                             />
                         </div>
@@ -80,7 +76,7 @@ export default function LoginPage() {
                                 required
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all text-sm outline-none"
+                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all text-sm outline-none text-black placeholder:text-gray-400"
                                 placeholder="••••••••"
                             />
                         </div>
@@ -89,7 +85,7 @@ export default function LoginPage() {
                     <button
                         type="submit"
                         disabled={loading}
-                        className="w-full flex items-center justify-center gap-2 bg-teal-600 text-white py-3.5 px-4 rounded-xl font-bold text-sm hover:bg-teal-700 transition-all shadow-md shadow-teal-600/20 active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 mt-2"
+                        className="w-full flex items-center justify-center gap-2 bg-[#053a66] text-white py-3.5 px-4 rounded-xl font-bold text-sm hover:bg-[#042d52] transition-all shadow-md shadow-[#053a66]/20 active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 mt-2"
                     >
                         {loading ? (
                             <Loader2 className="animate-spin" size={20} />

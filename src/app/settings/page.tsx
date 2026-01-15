@@ -261,9 +261,9 @@ export default function SettingsPage() {
                                     </p>
                                     <div className="flex gap-2">
                                         {[
-                                            { value: "none", label: "None", desc: "No emojis" },
-                                            { value: "light", label: "Light", desc: "A few emojis" },
-                                            { value: "medium", label: "Medium", desc: "Moderate emojis" },
+                                            { value: "low", label: "Low", desc: "0–1 emojis" },
+                                            { value: "medium", label: "Medium", desc: "2–4 emojis" },
+                                            { value: "high", label: "High", desc: "5–8 emojis" },
                                         ].map((option) => (
                                             <button
                                                 key={option.value}

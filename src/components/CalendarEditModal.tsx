@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { X, Trash2, Copy, Upload, Loader2, Sparkles } from "lucide-react";
 import Image from "next/image";
-import { PostDay } from "@/lib/types";
+import { PostDay, getPostDocId } from "@/lib/types";
 import { db, storage, functions } from "@/lib/firebase";
 import { doc, updateDoc, deleteDoc, setDoc, getDoc, serverTimestamp, deleteField } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
@@ -20,6 +20,21 @@ interface GeneratePostCopyResponse {
 
 function countWords(text: string): number {
     return text.trim() ? text.trim().split(/\s+/).length : 0;
+}
+
+// Platform badge component
+function PlatformBadge({ platform }: { platform?: string }) {
+    const platformName = platform || "facebook";
+    const isFacebook = platformName === "facebook";
+    return (
+        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
+            isFacebook
+                ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
+                : "bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400"
+        }`}>
+            {isFacebook ? "FB" : "IG"}
+        </span>
+    );
 }
 
 interface CalendarEditModalProps {
@@ -137,17 +152,21 @@ export default function CalendarEditModal({
         setIsSaving(true);
 
         try {
-            const docRef = doc(db, "workspaces", workspaceId, "post_days", post.date);
+            const docId = getPostDocId(post);
+            const docRef = doc(db, "workspaces", workspaceId, "post_days", docId);
+
+            // Build target doc ID with platform (for date changes)
+            const targetDocId = post.platform ? `${date}-${post.platform}` : date;
 
             // Check if date changed and target exists
             if (date !== post.date) {
-                const targetDocRef = doc(db, "workspaces", workspaceId, "post_days", date);
+                const targetDocRef = doc(db, "workspaces", workspaceId, "post_days", targetDocId);
                 const targetDoc = await getDoc(targetDocRef);
 
                 if (targetDoc.exists()) {
                     // Show conflict modal via parent
                     setIsSaving(false);
-                    onDateConflict(post.date, date);
+                    onDateConflict(docId, date);
                     return;
                 }
             }
@@ -202,13 +221,14 @@ export default function CalendarEditModal({
 
             // If date changed, move the post
             if (date !== post.date) {
-                const targetDocRef = doc(db, "workspaces", workspaceId, "post_days", date);
+                const targetDocRef = doc(db, "workspaces", workspaceId, "post_days", targetDocId);
 
                 // Create new doc at target date - use stripUndefined to remove undefined values
                 // Note: postingTime was already recalculated when date was changed
                 const newDocData = stripUndefined({
                     ...post,
                     date,
+                    platform: post.platform, // Preserve platform
                     postingTime,
                     postingTimeSource: "auto" as const, // Date change always resets to auto
                     ai: {
@@ -240,7 +260,8 @@ export default function CalendarEditModal({
     const handleDelete = async () => {
         setIsDeleting(true);
         try {
-            const docRef = doc(db, "workspaces", workspaceId, "post_days", post.date);
+            const docId = getPostDocId(post);
+            const docRef = doc(db, "workspaces", workspaceId, "post_days", docId);
             await deleteDoc(docRef);
             onClose();
         } catch (err) {
@@ -256,12 +277,13 @@ export default function CalendarEditModal({
 
         setIsDuplicating(true);
         try {
-            // Check if target date exists
-            const targetDocRef = doc(db, "workspaces", workspaceId, "post_days", duplicateDate);
+            // Build target doc ID with platform (same platform as source)
+            const targetDocId = post.platform ? `${duplicateDate}-${post.platform}` : duplicateDate;
+            const targetDocRef = doc(db, "workspaces", workspaceId, "post_days", targetDocId);
             const targetDoc = await getDoc(targetDocRef);
 
             if (targetDoc.exists()) {
-                alert(`A post already exists on ${duplicateDate}. Choose a different date.`);
+                alert(`A post already exists on ${duplicateDate} for this platform. Choose a different date.`);
                 setIsDuplicating(false);
                 return;
             }
@@ -278,8 +300,10 @@ export default function CalendarEditModal({
             const duplicatePostingTime = randomTimeInWindow5Min(duplicateDate, duplicateDate);
 
             // Create duplicate post - use stripUndefined to remove undefined values
+            // Preserve the same platform as the original post
             const duplicateData = stripUndefined({
                 date: duplicateDate,
+                platform: post.platform, // Preserve platform
                 starterText: post.starterText,
                 imageAssetId: post.imageAssetId,
                 postingTime: duplicatePostingTime,
@@ -327,10 +351,11 @@ export default function CalendarEditModal({
         >(functions, "generatePostCopy");
 
         try {
+            const docId = getPostDocId(post);
             // Pass current values as previous outputs so AI knows what to avoid repeating
             const result = await generatePostCopy({
                 workspaceId,
-                dateId: post.date,
+                dateId: docId,
                 regenerate: true,
                 previousOutputs: {
                     igCaption: igCaption || undefined,
@@ -343,7 +368,7 @@ export default function CalendarEditModal({
 
             if (result.data.status === "generated") {
                 // Re-fetch the post to get the new AI content
-                const postRef = doc(db, "workspaces", workspaceId, "post_days", post.date);
+                const postRef = doc(db, "workspaces", workspaceId, "post_days", docId);
                 const updatedPost = await getDoc(postRef);
 
                 if (updatedPost.exists()) {
@@ -380,7 +405,10 @@ export default function CalendarEditModal({
             <div className="bg-[var(--bg-card)] rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-primary)] bg-[var(--bg-secondary)]">
-                    <h2 className="font-semibold text-[var(--text-primary)]">Edit Post - {formatDisplayDate(post.date)}</h2>
+                    <div className="flex items-center gap-2">
+                        <PlatformBadge platform={post.platform} />
+                        <h2 className="font-semibold text-[var(--text-primary)]">Edit Post - {formatDisplayDate(post.date)}</h2>
+                    </div>
                     <button
                         onClick={onClose}
                         className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors"

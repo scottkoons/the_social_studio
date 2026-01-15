@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PostDay } from "@/lib/types";
+import { PostDay, getPostDocId } from "@/lib/types";
 import ReviewRow from "./ReviewRow";
 import EmptyState from "./ui/EmptyState";
 import { ChevronDown, ChevronUp, FileText } from "lucide-react";
@@ -44,8 +44,8 @@ export default function ReviewTable({
 
     const toggleSort = () => setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
 
-    const allSelected = posts.length > 0 && selectedIds.size === posts.length;
-    const someSelected = selectedIds.size > 0 && selectedIds.size < posts.length;
+    const allSelected = posts.length > 0 && posts.every(p => selectedIds.has(getPostDocId(p)));
+    const someSelected = posts.some(p => selectedIds.has(getPostDocId(p))) && !allSelected;
 
     const showInstagram = platformFilter === "all" || platformFilter === "instagram";
     const showFacebook = platformFilter === "all" || platformFilter === "facebook";
@@ -55,7 +55,7 @@ export default function ReviewTable({
             <EmptyState
                 icon={<FileText className="text-[var(--text-tertiary)]" size={24} />}
                 title="No posts available for review"
-                description="Add some posts in the Input tab to get started with AI generation."
+                description="Add some posts in the Planning tab to get started with AI generation."
             />
         );
     }
@@ -75,6 +75,9 @@ export default function ReviewTable({
                                 onChange={(e) => onSelectAll(e.target.checked)}
                                 className="h-4 w-4 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-offset-0 cursor-pointer bg-[var(--input-bg)]"
                             />
+                        </th>
+                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider w-24 z-10">
+                            Platform
                         </th>
                         <th
                             className="sticky top-0 bg-[var(--table-header-bg)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider w-32 cursor-pointer hover:text-[var(--accent-primary)] transition-colors z-10"
@@ -104,18 +107,21 @@ export default function ReviewTable({
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border-secondary)]">
-                    {sortedPosts.map((post) => (
-                        <ReviewRow
-                            key={post.date}
-                            post={post}
-                            isSelected={selectedIds.has(post.date)}
-                            isGenerating={generatingIds.has(post.date)}
-                            platformFilter={platformFilter}
-                            onSelect={onSelectRow}
-                            onRegenerate={onRegenerate}
-                            onDelete={onDelete}
-                        />
-                    ))}
+                    {sortedPosts.map((post) => {
+                        const docId = getPostDocId(post);
+                        return (
+                            <ReviewRow
+                                key={docId}
+                                post={post}
+                                isSelected={selectedIds.has(docId)}
+                                isGenerating={generatingIds.has(docId)}
+                                platformFilter={platformFilter}
+                                onSelect={onSelectRow}
+                                onRegenerate={onRegenerate}
+                                onDelete={onDelete}
+                            />
+                        );
+                    })}
                 </tbody>
             </table>
         </div>

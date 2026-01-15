@@ -1,6 +1,6 @@
 "use client";
 
-import { PostDay } from "@/lib/types";
+import { PostDay, getPostDocId } from "@/lib/types";
 import TableRow from "./TableRow";
 import EmptyState from "./ui/EmptyState";
 import { Calendar } from "lucide-react";
@@ -15,15 +15,15 @@ interface InputTableProps {
 }
 
 export default function InputTable({ posts, selectedIds, onSelectRow, onSelectAll, highlightedDate, onHighlightClear }: InputTableProps) {
-    const allSelected = posts.length > 0 && posts.every(p => selectedIds.has(p.date));
-    const someSelected = posts.some(p => selectedIds.has(p.date));
+    const allSelected = posts.length > 0 && posts.every(p => selectedIds.has(getPostDocId(p)));
+    const someSelected = posts.some(p => selectedIds.has(getPostDocId(p)));
 
     if (posts.length === 0) {
         return (
             <EmptyState
                 icon={<Calendar className="text-[var(--text-tertiary)]" size={24} />}
                 title="No posts scheduled yet"
-                description="Start planning your content by clicking 'Add Row' or importing a CSV file."
+                description="Start planning your content in the Planning tab or click 'Add Row' to create a new post."
             />
         );
     }
@@ -44,6 +44,9 @@ export default function InputTable({ posts, selectedIds, onSelectRow, onSelectAl
                                 className="h-4 w-4 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-offset-0 cursor-pointer bg-[var(--input-bg)]"
                             />
                         </th>
+                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider w-24 z-10">
+                            Platform
+                        </th>
                         <th className="sticky top-0 bg-[var(--table-header-bg)] px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider w-36 z-10">
                             Date
                         </th>
@@ -59,17 +62,20 @@ export default function InputTable({ posts, selectedIds, onSelectRow, onSelectAl
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border-secondary)]">
-                    {posts.map((post) => (
-                        <TableRow
-                            key={post.date}
-                            post={post}
-                            allPostDates={posts.map(p => p.date)}
-                            isSelected={selectedIds.has(post.date)}
-                            onSelect={onSelectRow}
-                            isHighlighted={post.date === highlightedDate}
-                            onHighlightClear={onHighlightClear}
-                        />
-                    ))}
+                    {posts.map((post) => {
+                        const docId = getPostDocId(post);
+                        return (
+                            <TableRow
+                                key={docId}
+                                post={post}
+                                allPostDates={posts.map(p => p.date)}
+                                isSelected={selectedIds.has(docId)}
+                                onSelect={onSelectRow}
+                                isHighlighted={post.date === highlightedDate}
+                                onHighlightClear={onHighlightClear}
+                            />
+                        );
+                    })}
                 </tbody>
             </table>
         </div>

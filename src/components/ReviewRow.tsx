@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { PostDay, PostDayAI } from "@/lib/types";
+import { PostDay, PostDayAI, getPostDocId } from "@/lib/types";
 import { db } from "@/lib/firebase";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import ImageUpload from "./ImageUpload";
@@ -34,8 +34,27 @@ const DEFAULT_AI: Omit<PostDayAI, 'meta'> & { meta?: PostDayAI['meta'] } = {
     fb: { caption: "", hashtags: [] },
 };
 
+// Platform badge component
+function PlatformBadge({ platform }: { platform?: string }) {
+    const platformName = platform || "facebook";
+    const isFacebook = platformName === "facebook";
+
+    return (
+        <span
+            className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
+                isFacebook
+                    ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
+                    : "bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400"
+            }`}
+        >
+            {isFacebook ? "FB" : "IG"}
+        </span>
+    );
+}
+
 export default function ReviewRow({ post, isSelected, isGenerating, platformFilter = "all", onSelect, onRegenerate, onDelete }: ReviewRowProps) {
     const { user, workspaceId } = useAuth();
+    const docId = getPostDocId(post);
     const [localAi, setLocalAi] = useState<typeof DEFAULT_AI>(() => {
         if (post.ai) {
             return {
@@ -90,7 +109,7 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
             if (!user || !workspaceId) return;
             setIsSaving(true);
             try {
-                const docRef = doc(db, "workspaces", workspaceId, "post_days", post.date);
+                const docRef = doc(db, "workspaces", workspaceId, "post_days", docId);
 
                 await updateDoc(docRef, {
                     [`ai.${platform}.${field}`]: value,
@@ -126,7 +145,7 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
         setIsSaving(true);
         setDateError(null);
 
-        const result = await movePostDay(workspaceId, post.date, newDate, { overwrite: false });
+        const result = await movePostDay(workspaceId, docId, newDate, { overwrite: false, platform: post.platform });
 
         if (result.needsConfirmOverwrite) {
             setPendingNewDate(newDate);
@@ -149,7 +168,7 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
         setIsSaving(true);
         setDateError(null);
 
-        const result = await movePostDay(workspaceId, post.date, pendingNewDate, { overwrite: true });
+        const result = await movePostDay(workspaceId, docId, pendingNewDate, { overwrite: true, platform: post.platform });
 
         if (!result.ok) {
             setDateError(result.error || "Failed to change date.");
@@ -171,9 +190,14 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
                 <input
                     type="checkbox"
                     checked={isSelected}
-                    onChange={(e) => onSelect(post.date, e.target.checked)}
+                    onChange={(e) => onSelect(docId, e.target.checked)}
                     className="h-4 w-4 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-offset-0 cursor-pointer bg-[var(--input-bg)]"
                 />
+            </td>
+
+            {/* Platform */}
+            <td className="px-4 py-4 align-top">
+                <PlatformBadge platform={post.platform} />
             </td>
 
             {/* Date */}
@@ -339,7 +363,7 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
                     )}
                     {onRegenerate && (
                         <button
-                            onClick={() => onRegenerate(post.date, {
+                            onClick={() => onRegenerate(docId, {
                                 igCaption: localAi.ig.caption,
                                 igHashtags: localAi.ig.hashtags,
                                 fbCaption: localAi.fb.caption,
@@ -380,7 +404,7 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
                     confirmVariant="danger"
                     onConfirm={() => {
                         setShowDeleteModal(false);
-                        onDelete?.(post.date);
+                        onDelete?.(docId);
                     }}
                     onCancel={() => setShowDeleteModal(false)}
                 />

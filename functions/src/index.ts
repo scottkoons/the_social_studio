@@ -453,35 +453,108 @@ function trimEmojisToMax(text: string, maxCount: number): string {
 }
 
 // Enforce emoji limits on a caption based on emojiStyle
-// LIMITS: none=0, light=1, medium=2 (per caption)
-type EmojiStyleType = "none" | "light" | "medium";
+// LIMITS: low=0-1, medium=2-4, high=5-8 (per caption)
+type EmojiStyleType = "low" | "medium" | "high";
 
 interface EmojiEnforcementResult {
   caption: string;
   originalCount: number;
   finalCount: number;
   stripped: number;
+  added: number;
+}
+
+// Pool of emojis to add when AI doesn't generate enough
+const EMOJI_POOL = [
+  "🎉", "✨", "🔥", "❤️", "🙌", "💯", "👏", "🍻", "🍺", "⭐",
+  "💪", "🎊", "👍", "😍", "🥳", "💥", "🌟", "😊", "🤩", "💫"
+];
+
+// Add emojis to caption to meet minimum requirement
+function addEmojisToCaption(caption: string, countToAdd: number): string {
+  if (countToAdd <= 0) return caption;
+
+  // Get emojis already in the caption to avoid duplicates
+  const existingEmojis = new Set(findEmojis(caption));
+
+  // Filter pool to avoid duplicates
+  const availableEmojis = EMOJI_POOL.filter(e => !existingEmojis.has(e));
+
+  // Shuffle available emojis for variety
+  const shuffled = [...availableEmojis].sort(() => Math.random() - 0.5);
+
+  // Take what we need
+  const emojisToAdd = shuffled.slice(0, countToAdd);
+
+  // If we don't have enough unique emojis, add duplicates from pool
+  while (emojisToAdd.length < countToAdd) {
+    emojisToAdd.push(EMOJI_POOL[Math.floor(Math.random() * EMOJI_POOL.length)]);
+  }
+
+  // Strategy: distribute emojis throughout the caption
+  // Split caption into sentences/phrases
+  const sentences = caption.split(/(?<=[.!?])\s+/);
+
+  if (sentences.length === 1) {
+    // Single sentence - add emojis at end
+    return caption + " " + emojisToAdd.join(" ");
+  }
+
+  // Multiple sentences - distribute emojis
+  let result = "";
+  let emojiIndex = 0;
+
+  for (let i = 0; i < sentences.length; i++) {
+    result += sentences[i];
+
+    // Add emoji after some sentences (not all, to look natural)
+    if (emojiIndex < emojisToAdd.length && (i % 2 === 0 || i === sentences.length - 1)) {
+      result += " " + emojisToAdd[emojiIndex];
+      emojiIndex++;
+    }
+
+    if (i < sentences.length - 1) {
+      result += " ";
+    }
+  }
+
+  // Add any remaining emojis at the end
+  while (emojiIndex < emojisToAdd.length) {
+    result += " " + emojisToAdd[emojiIndex];
+    emojiIndex++;
+  }
+
+  return result;
 }
 
 function enforceEmojiLimit(caption: string, emojiStyle: EmojiStyleType): EmojiEnforcementResult {
   const originalCount = countEmojis(caption);
 
-  // STRICT LIMITS: none=0, light=1, medium=2
-  const maxEmojis: Record<EmojiStyleType, number> = {
-    none: 0,
-    light: 1,
-    medium: 2,
+  // LIMITS: low=0-1, medium=2-4, high=5-8 (per caption)
+  const emojiLimits: Record<EmojiStyleType, { min: number; max: number }> = {
+    low: { min: 0, max: 1 },
+    medium: { min: 2, max: 4 },
+    high: { min: 5, max: 8 },
   };
 
-  const max = maxEmojis[emojiStyle] ?? 2;
+  const limits = emojiLimits[emojiStyle] ?? { min: 0, max: 1 };
 
-  let result: string;
-  if (max === 0) {
-    result = stripEmojis(caption);
-  } else if (originalCount > max) {
-    result = trimEmojisToMax(caption, max);
-  } else {
-    result = caption;
+  let result: string = caption;
+  let added = 0;
+  let stripped = 0;
+
+  // First, add emojis if below minimum
+  if (originalCount < limits.min) {
+    const toAdd = limits.min - originalCount;
+    result = addEmojisToCaption(result, toAdd);
+    added = toAdd;
+  }
+
+  // Then, strip emojis if above maximum
+  const currentCount = countEmojis(result);
+  if (currentCount > limits.max) {
+    result = trimEmojisToMax(result, limits.max);
+    stripped = currentCount - limits.max;
   }
 
   const finalCount = countEmojis(result);
@@ -490,7 +563,8 @@ function enforceEmojiLimit(caption: string, emojiStyle: EmojiStyleType): EmojiEn
     caption: result,
     originalCount,
     finalCount,
-    stripped: originalCount - finalCount,
+    stripped,
+    added,
   };
 }
 
@@ -507,6 +581,7 @@ interface GeneratePostCopyRequest {
   regenerate?: boolean;
   previousOutputs?: PreviousOutputs;
   requestId?: string;
+  emojiStyle?: "low" | "medium" | "high"; // Required for regenerate, uses workspace setting as fallback
 }
 
 interface GeneratePostCopyResponse {
@@ -526,7 +601,7 @@ function buildPrompt(
   starterText: string | undefined,
   brandVoice: string,
   hashtagStyle: "light" | "medium" | "heavy",
-  emojiStyle: "none" | "light" | "medium",
+  emojiStyle: "low" | "medium" | "high",
   dateStr: string,
   isRegenerate: boolean = false,
   previousOutputs?: PreviousOutputs
@@ -540,14 +615,14 @@ function buildPrompt(
   const counts = hashtagCounts[hashtagStyle] || hashtagCounts.medium;
 
   // Emoji style instructions - STRICT enforcement rules
-  // LIMITS: none=0, light=1, medium=2 (per caption)
+  // LIMITS: low=0-1, medium=2-4 (min 2), high=5-8 (per caption)
   const emojiInstructions = {
-    none: "ABSOLUTE RULE: Do NOT use ANY emojis whatsoever. ZERO emojis allowed. No exceptions. The captions must be 100% plain text only - no emoji characters of any kind.",
-    light: "Use emojis VERY SPARINGLY - MAXIMUM 1 emoji per caption total. Only if essential for tone.",
-    medium: "Use emojis SPARINGLY - MAXIMUM 2 emojis per caption total. Place them strategically.",
+    low: "EMOJI RULE: Use 0 or 1 emoji MAXIMUM per caption. Keep it minimal.",
+    medium: "EMOJI RULE: You MUST use EXACTLY 2-4 emojis per caption. This is REQUIRED - no fewer than 2, no more than 4. Scatter them naturally throughout the caption.",
+    high: "EMOJI RULE: You MUST use EXACTLY 5-8 emojis per caption. This is REQUIRED - no fewer than 5, no more than 8. Be expressive! Add emojis at the start, middle, and end of sentences. Use varied emojis like 🎉 ✨ 🔥 ❤️ 🙌 💯 🍺 🍻 etc.",
   };
 
-  const emojiGuidance = emojiInstructions[emojiStyle] || emojiInstructions.medium;
+  const emojiGuidance = emojiInstructions[emojiStyle] || emojiInstructions.low;
 
   // Build context based ONLY on user-provided text
   let contextInfo = "";
@@ -558,7 +633,7 @@ function buildPrompt(
   }
 
   const brandContext = brandVoice
-    ? `\n\nBrand Voice Guidelines:\n${brandVoice}`
+    ? `\n\n**MANDATORY BRAND VOICE INSTRUCTIONS** (YOU MUST FOLLOW THESE EXACTLY):\n${brandVoice}\n\nThe above brand voice instructions are CRITICAL and MUST be followed precisely. Do not ignore them.`
     : "";
 
   // Build regeneration context to avoid repeating previous outputs
@@ -760,7 +835,31 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
     const workspaceData = workspaceDoc.data() || {};
     const brandVoice = workspaceData.settings?.ai?.brandVoice || "";
     const hashtagStyle = workspaceData.settings?.ai?.hashtagStyle || "medium";
-    const emojiStyle = workspaceData.settings?.ai?.emojiStyle || "medium";
+
+    // Log brand voice for debugging
+    console.info(`[BrandVoice] brandVoice="${brandVoice ? brandVoice.substring(0, 100) + (brandVoice.length > 100 ? '...' : '') : '(empty)'}"`);
+
+    // SAFEGUARD: emojiStyle must be explicitly passed in the request
+    // This prevents stale/cached values from being used
+    const requestEmojiStyle = request.data.emojiStyle;
+    const workspaceEmojiStyle = workspaceData.settings?.ai?.emojiStyle;
+
+    // Validate emojiStyle is one of the valid values
+    const validEmojiStyles = ["low", "medium", "high"];
+    let emojiStyle: "low" | "medium" | "high";
+
+    if (requestEmojiStyle && validEmojiStyles.includes(requestEmojiStyle)) {
+      // Use explicitly passed emojiStyle (preferred - ensures fresh value)
+      emojiStyle = requestEmojiStyle;
+    } else if (workspaceEmojiStyle && validEmojiStyles.includes(workspaceEmojiStyle)) {
+      // Fall back to workspace setting
+      emojiStyle = workspaceEmojiStyle as "low" | "medium" | "high";
+    } else {
+      // Default to "low" if nothing valid is found
+      emojiStyle = "low";
+    }
+
+    console.info(`[EmojiStyle] Using emojiStyle="${emojiStyle}" (request=${requestEmojiStyle}, workspace=${workspaceEmojiStyle})`);
 
     // 7. Get OpenAI client
     const apiKey = process.env.OPENAI_API_KEY;
@@ -802,18 +901,24 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
         const promptText = attempts === 1 ? prompt : `${prompt}\n\nPrevious response was invalid JSON. Please return ONLY valid JSON.`;
 
         // Build system message with emoji rules - STRICT LIMITS
-        const emojiSystemRule = emojiStyle === "none"
-          ? "ABSOLUTE RULE: You MUST NOT use ANY emojis. ZERO emojis allowed. Plain text only."
-          : emojiStyle === "light"
-          ? "STRICT: Maximum 1 emoji per caption only."
-          : "STRICT: Maximum 2 emojis per caption only.";
+        // low=0-1, medium=2-4, high=5-8
+        const emojiSystemRule = emojiStyle === "low"
+          ? "EMOJI REQUIREMENT: Maximum 1 emoji per caption."
+          : emojiStyle === "medium"
+          ? "EMOJI REQUIREMENT: You MUST include 2-4 emojis in each caption. This is mandatory."
+          : "EMOJI REQUIREMENT: You MUST include 5-8 emojis in each caption. This is mandatory - use emojis liberally throughout!";
+
+        // Add brand voice to system message if provided
+        const brandVoiceSystemRule = brandVoice
+          ? ` BRAND VOICE REQUIREMENT: You MUST follow these brand voice instructions exactly: "${brandVoice}".`
+          : "";
 
         const completion = await openai.chat.completions.create({
           model: MODEL_NAME,
           messages: [
             {
               role: "system",
-              content: `You are a social media copywriter. Use ONLY the user-provided text description. Images are completely ignored - do NOT reference, describe, or assume anything about images. Do NOT mention visual elements, food appearance, or photos. ${emojiSystemRule} Return ONLY valid JSON. ${nonceMessage}`,
+              content: `You are a social media copywriter. Use ONLY the user-provided text description. Images are completely ignored - do NOT reference, describe, or assume anything about images. Do NOT mention visual elements, food appearance, or photos. ${emojiSystemRule}${brandVoiceSystemRule} Return ONLY valid JSON. ${nonceMessage}`,
             },
             {
               role: "user",
@@ -868,16 +973,13 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
     aiOutput.fb.caption = fbEnforcement.caption;
 
     // Log enforcement results
-    if (igEnforcement.stripped > 0 || fbEnforcement.stripped > 0) {
-      console.info(
-        `[EmojiEnforcement] Stripped emojis - IG: ${igEnforcement.originalCount} -> ${igEnforcement.finalCount} (removed ${igEnforcement.stripped}), ` +
-        `FB: ${fbEnforcement.originalCount} -> ${fbEnforcement.finalCount} (removed ${fbEnforcement.stripped})`
-      );
-    } else {
-      console.info(
-        `[EmojiEnforcement] No stripping needed - IG: ${igEnforcement.finalCount} emojis, FB: ${fbEnforcement.finalCount} emojis`
-      );
-    }
+    const igAction = igEnforcement.added > 0 ? `added ${igEnforcement.added}` : igEnforcement.stripped > 0 ? `removed ${igEnforcement.stripped}` : "unchanged";
+    const fbAction = fbEnforcement.added > 0 ? `added ${fbEnforcement.added}` : fbEnforcement.stripped > 0 ? `removed ${fbEnforcement.stripped}` : "unchanged";
+
+    console.info(
+      `[EmojiEnforcement] IG: ${igEnforcement.originalCount} -> ${igEnforcement.finalCount} (${igAction}), ` +
+      `FB: ${fbEnforcement.originalCount} -> ${fbEnforcement.finalCount} (${fbAction})`
+    );
 
     // 11. Write AI output to Firestore
     await postRef.update({

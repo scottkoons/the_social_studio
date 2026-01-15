@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
-import { LogOut, Layout, Calendar, FileCheck, Settings } from "lucide-react";
+import { LogOut, Layout, Calendar, FileCheck, Settings, CalendarPlus } from "lucide-react";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 
 export default function Navbar() {
@@ -14,6 +14,7 @@ export default function Navbar() {
     if (!user || pathname === "/login") return null;
 
     const navItems = [
+        { name: "Planning", href: "/planning", icon: CalendarPlus },
         { name: "Input", href: "/input", icon: Layout },
         { name: "Review", href: "/review", icon: FileCheck },
         { name: "Calendar", href: "/calendar", icon: Calendar },
@@ -24,14 +25,22 @@ export default function Navbar() {
         <nav className="fixed top-0 left-0 right-0 h-16 bg-[var(--bg-card)] border-b border-[var(--border-primary)] z-50 px-4 md:px-8">
             <div className="max-w-7xl mx-auto h-full flex items-center justify-between">
                 <div className="flex items-center gap-8">
-                    <Link href="/input" className="flex items-center">
+                    <Link href="/planning" className="flex items-center">
                         <div className="relative h-8 w-auto">
                             <Image
                                 src="/branding/the-social-studio-logo.png"
                                 alt="The Social Studio"
                                 width={180}
                                 height={32}
-                                className="object-contain h-8 w-auto"
+                                className="object-contain h-8 w-auto block dark:hidden"
+                                priority
+                            />
+                            <Image
+                                src="/branding/the-social-studio-logo-wt.png"
+                                alt="The Social Studio"
+                                width={180}
+                                height={32}
+                                className="object-contain h-8 w-auto hidden dark:block"
                                 priority
                             />
                         </div>

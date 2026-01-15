@@ -1,11 +1,12 @@
 import { db } from "@/lib/firebase";
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { stripUndefined } from "@/lib/utils";
-import { PostDay } from "@/lib/types";
+import { PostDay, PostPlatform } from "@/lib/types";
 import { generatePostingTimeForDateChange } from "@/lib/postingTime";
 
 export interface MovePostDayOptions {
     overwrite?: boolean;
+    platform?: PostPlatform; // Platform for the post (used for new doc ID format)
 }
 
 export interface MovePostDayResult {
@@ -26,40 +27,45 @@ export interface MovePostDayResult {
  * All screens stay in sync via Firestore onSnapshot listeners.
  *
  * @param workspaceId - The workspace ID
- * @param fromDate - Source date (YYYY-MM-DD)
+ * @param fromDocId - Source document ID (can be "YYYY-MM-DD" or "YYYY-MM-DD-platform")
  * @param toDate - Target date (YYYY-MM-DD)
- * @param options - { overwrite: boolean } - whether to overwrite existing post at target
+ * @param options - { overwrite: boolean, platform?: PostPlatform }
  * @returns MovePostDayResult
  */
 export async function movePostDay(
     workspaceId: string,
-    fromDate: string,
+    fromDocId: string,
     toDate: string,
     options: MovePostDayOptions = {}
 ): Promise<MovePostDayResult> {
-    const { overwrite = false } = options;
-
-    // No-op if same date
-    if (fromDate === toDate) {
-        return { ok: true };
-    }
+    const { overwrite = false, platform } = options;
 
     // Validate inputs
     if (!workspaceId) {
         return { ok: false, error: "Workspace ID is required" };
     }
-    if (!fromDate || !toDate) {
-        return { ok: false, error: "Both source and target dates are required" };
+    if (!fromDocId || !toDate) {
+        return { ok: false, error: "Both source and target are required" };
     }
 
-    const sourceRef = doc(db, "workspaces", workspaceId, "post_days", fromDate);
-    const targetRef = doc(db, "workspaces", workspaceId, "post_days", toDate);
+    // Determine the target doc ID based on platform
+    // If platform is provided, use new format: YYYY-MM-DD-platform
+    // Otherwise, use the legacy format: YYYY-MM-DD
+    const toDocId = platform ? `${toDate}-${platform}` : toDate;
+
+    // No-op if same document
+    if (fromDocId === toDocId) {
+        return { ok: true };
+    }
+
+    const sourceRef = doc(db, "workspaces", workspaceId, "post_days", fromDocId);
+    const targetRef = doc(db, "workspaces", workspaceId, "post_days", toDocId);
 
     try {
         // Load source document
         const sourceSnap = await getDoc(sourceRef);
         if (!sourceSnap.exists()) {
-            return { ok: false, error: `No post found for date ${fromDate}` };
+            return { ok: false, error: `No post found with ID ${fromDocId}` };
         }
 
         const sourceData = sourceSnap.data() as PostDay;
@@ -79,6 +85,7 @@ export async function movePostDay(
         const newDocData = stripUndefined({
             ...sourceData,
             date: toDate,
+            platform: platform || sourceData.platform, // Preserve platform
             postingTime: newPostingTime,
             postingTimeSource: "auto" as const,
             updatedAt: serverTimestamp(),
@@ -107,12 +114,15 @@ export async function movePostDay(
  */
 export async function checkPostExistsAtDate(
     workspaceId: string,
-    date: string
+    date: string,
+    platform?: PostPlatform
 ): Promise<boolean> {
     if (!workspaceId || !date) return false;
 
     try {
-        const docRef = doc(db, "workspaces", workspaceId, "post_days", date);
+        // Check using the appropriate doc ID format
+        const docId = platform ? `${date}-${platform}` : date;
+        const docRef = doc(db, "workspaces", workspaceId, "post_days", docId);
         const snap = await getDoc(docRef);
         return snap.exists();
     } catch {

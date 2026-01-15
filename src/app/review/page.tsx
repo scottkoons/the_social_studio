@@ -13,10 +13,12 @@ import Toast from "@/components/ui/Toast";
 import PlatformFilter from "@/components/ui/PlatformFilter";
 import BufferExportModal from "@/components/BufferExportModal";
 import PostsPdfPrintRoot from "@/components/PostsPdfPrintRoot";
-import { PostDay } from "@/lib/types";
+import { PostDay, getPostDocId } from "@/lib/types";
 import { Play, Download, FileText, Loader2 } from "lucide-react";
 import { useHidePastUnsent } from "@/hooks/useHidePastUnsent";
+import { useWorkspaceUiSettings } from "@/hooks/useWorkspaceUiSettings";
 import { isPastOrTodayInDenver } from "@/lib/utils";
+import { EmojiStyle } from "@/lib/types";
 import { PostsPdfExportProgress, getPhaseText as getPostsPhaseText } from "@/lib/postsPdfExport";
 
 const CONCURRENCY_LIMIT = 3;
@@ -50,12 +52,15 @@ export default function ReviewPage() {
     // Use shared hook for filtering past unsent posts
     const { filteredPosts, hidePastUnsent } = useHidePastUnsent(posts);
 
+    // Get current AI settings to pass emojiStyle to generate calls
+    const { aiSettings } = useWorkspaceUiSettings();
+
     // When filter is enabled, deselect any posts that become hidden
     useEffect(() => {
         if (!hidePastUnsent) return;
-        const visibleDates = new Set(filteredPosts.map(p => p.date));
+        const visibleIds = new Set(filteredPosts.map(p => getPostDocId(p)));
         setSelectedIds(prev => {
-            const filtered = new Set([...prev].filter(id => visibleDates.has(id)));
+            const filtered = new Set([...prev].filter(id => visibleIds.has(id)));
             return filtered.size !== prev.size ? filtered : prev;
         });
     }, [hidePastUnsent, filteredPosts]);
@@ -68,8 +73,9 @@ export default function ReviewPage() {
             orderBy("date", "asc")
         );
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const postsData = snapshot.docs.map((doc) => ({
-                ...doc.data(),
+            const postsData = snapshot.docs.map((docSnap) => ({
+                docId: docSnap.id, // Store the actual Firestore doc ID
+                ...docSnap.data(),
             })) as PostDay[];
             setPosts(postsData);
             setLoading(false);
@@ -129,7 +135,7 @@ export default function ReviewPage() {
     };
 
     const onSelectAll = (selected: boolean) => {
-        if (selected) setSelectedIds(new Set(filteredPosts.map(p => p.date)));
+        if (selected) setSelectedIds(new Set(filteredPosts.map(p => getPostDocId(p))));
         else setSelectedIds(new Set());
     };
 
@@ -155,9 +161,13 @@ export default function ReviewPage() {
                     fbHashtags?: string[];
                 };
                 requestId?: string;
+                emojiStyle?: EmojiStyle;
             },
             GeneratePostCopyResponse
         >(functions, "generatePostCopy");
+
+        // Pass current emojiStyle to ensure fresh settings are used
+        const currentEmojiStyle = aiSettings.emojiStyle;
 
         try {
             const result = await generatePostCopy({
@@ -166,6 +176,7 @@ export default function ReviewPage() {
                 regenerate: true,
                 previousOutputs,
                 requestId: crypto.randomUUID(),
+                emojiStyle: currentEmojiStyle,
             });
 
             if (result.data.status === "generated") {
@@ -183,7 +194,7 @@ export default function ReviewPage() {
                 return next;
             });
         }
-    }, [user, workspaceId, showToast]);
+    }, [user, workspaceId, showToast, aiSettings.emojiStyle]);
 
     const handleDelete = useCallback(async (dateId: string) => {
         if (!workspaceId) return;
@@ -212,7 +223,7 @@ export default function ReviewPage() {
         if (!user || !workspaceId) return;
 
         const targets = selectedIds.size > 0
-            ? filteredPosts.filter(p => selectedIds.has(p.date))
+            ? filteredPosts.filter(p => selectedIds.has(getPostDocId(p)))
             : filteredPosts;
 
         if (targets.length === 0) return;
@@ -231,9 +242,13 @@ export default function ReviewPage() {
                     fbHashtags?: string[];
                 };
                 requestId?: string;
+                emojiStyle?: EmojiStyle;
             },
             GeneratePostCopyResponse
         >(functions, "generatePostCopy");
+
+        // Capture current emojiStyle at start of batch to ensure consistency
+        const currentEmojiStyle = aiSettings.emojiStyle;
 
         let generated = 0;
         let regenerated = 0;
@@ -264,7 +279,8 @@ export default function ReviewPage() {
 
         const processOne = async (item: { post: PostDay; hadExistingAi: boolean }) => {
             const { post, hadExistingAi } = item;
-            setGeneratingIds(prev => new Set(prev).add(post.date));
+            const docId = getPostDocId(post);
+            setGeneratingIds(prev => new Set(prev).add(docId));
 
             try {
                 const previousOutputs = hadExistingAi ? {
@@ -276,10 +292,11 @@ export default function ReviewPage() {
 
                 const result = await generatePostCopy({
                     workspaceId,
-                    dateId: post.date,
+                    dateId: docId,
                     regenerate: true,
                     previousOutputs,
                     requestId: crypto.randomUUID(),
+                    emojiStyle: currentEmojiStyle,
                 });
 
                 if (result.data.status === "generated") {
@@ -290,12 +307,12 @@ export default function ReviewPage() {
                     }
                 }
             } catch (err) {
-                console.error(`Generate error for ${post.date}:`, err);
+                console.error(`Generate error for ${docId}:`, err);
                 failed++;
             } finally {
                 setGeneratingIds(prev => {
                     const next = new Set(prev);
-                    next.delete(post.date);
+                    next.delete(docId);
                     return next;
                 });
             }
@@ -353,7 +370,7 @@ export default function ReviewPage() {
 
     const getPostsForExport = useCallback(() => {
         if (selectedIds.size > 0) {
-            return filteredPosts.filter(p => selectedIds.has(p.date));
+            return filteredPosts.filter(p => selectedIds.has(getPostDocId(p)));
         }
         return filteredPosts;
     }, [selectedIds, filteredPosts]);
@@ -419,7 +436,7 @@ export default function ReviewPage() {
                         <button
                             onClick={handleGenerateBatch}
                             disabled={isGenerating}
-                            className="inline-flex items-center gap-2 bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] text-white dark:text-gray-900 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="inline-flex items-center gap-2 bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isGenerating ? (
                                 <>
