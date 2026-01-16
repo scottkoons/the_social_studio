@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import Papa from "papaparse";
+import { differenceInCalendarDays, parseISO } from "date-fns";
 import { db, functions } from "@/lib/firebase";
 import { collection, getDocs, doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
@@ -74,6 +75,32 @@ export default function PlatformPlanCard({
     const [existingPlatformDates, setExistingPlatformDates] = useState<Set<string>>(new Set());
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Calculate projected posts based on date range and posts per week
+    const projection = useMemo(() => {
+        if (!startDate || !endDate) {
+            return { isValid: false, projected: 0, maxPossible: 0, error: null };
+        }
+
+        try {
+            const start = parseISO(startDate);
+            const end = parseISO(endDate);
+            const daysInRange = differenceInCalendarDays(end, start) + 1; // +1 for inclusive
+
+            if (daysInRange < 1) {
+                return { isValid: false, projected: 0, maxPossible: 0, error: "End date must be after start date" };
+            }
+
+            const weeksInRange = daysInRange / 7;
+            const rawProjected = Math.round(weeksInRange * postsPerWeek);
+            // Clamp to valid range: at least 0, at most daysInRange (1 post per day max)
+            const projected = Math.max(0, Math.min(rawProjected, daysInRange));
+
+            return { isValid: true, projected, maxPossible: daysInRange, error: null };
+        } catch {
+            return { isValid: false, projected: 0, maxPossible: 0, error: "Invalid date format" };
+        }
+    }, [startDate, endDate, postsPerWeek]);
 
     // Reset ALL state when dates change - single source of truth from parent
     useEffect(() => {
@@ -306,6 +333,18 @@ export default function PlatformPlanCard({
                             className="w-20 px-3 py-1.5 bg-[var(--input-bg)] border border-[var(--border-primary)] rounded-lg text-sm text-[var(--text-primary)] text-center focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-transparent"
                         />
                     </div>
+
+                    {/* Projected posts - updates instantly */}
+                    {projection.error ? (
+                        <p className="text-xs text-[var(--status-error)] flex items-center gap-1">
+                            <AlertCircle size={12} />
+                            {projection.error}
+                        </p>
+                    ) : projection.isValid ? (
+                        <p className="text-xs text-[var(--text-muted)]">
+                            Projected: <span className="font-medium text-[var(--text-secondary)]">{projection.projected} posts</span> (max {projection.maxPossible})
+                        </p>
+                    ) : null}
 
                     <div className="flex items-center gap-2">
                         <button
