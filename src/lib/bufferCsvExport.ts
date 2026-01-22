@@ -1,7 +1,23 @@
 import { PostDay } from "./types";
-import { formatForBufferExport, randomTimeInWindow5Min } from "./postingTime";
+import { randomPlatformTimeInWindow5Min } from "./postingTime";
+import { parseISO, format } from "date-fns";
 
 export type BufferPlatform = "instagram" | "facebook";
+
+/**
+ * Formats date and time for Buffer CSV export.
+ * Format: M/D/YY HH:mm (e.g., "1/23/26 17:30")
+ */
+function formatBufferDateTime(dateISO: string, time: string): string {
+    const date = parseISO(dateISO);
+    const [hours, minutes] = time.split(":");
+
+    // Format: M/D/YY (no leading zeros on month/day, 2-digit year)
+    const dateStr = format(date, "M/d/yy");
+
+    // Time is already in HH:mm format
+    return `${dateStr} ${hours}:${minutes}`;
+}
 
 export interface ExportResult {
     csv: string;
@@ -98,7 +114,7 @@ export function postHasImage(
  * - Text: Caption + two line breaks + space-separated hashtags (with # symbols)
  * - Image URL: Firebase Storage download URL
  * - Tags: Empty (not used for hashtags)
- * - Posting Time: YYYY-MM-DD HH:MM format (24-hour, Denver time)
+ * - Posting Time: M/D/YY HH:mm format (e.g., "1/23/26 17:30")
  */
 export function generateBufferCsv(
     posts: PostDay[],
@@ -148,11 +164,13 @@ export function generateBufferCsv(
         // Build text with caption + hashtags
         const text = buildBufferText(platformData.caption, platformData.hashtags || []);
 
-        // Get posting time - generate if missing
-        const postingTime = post.postingTime || randomTimeInWindow5Min(post.date, post.date);
+        // Get platform-specific posting time - generate if missing
+        const postingTime = platform === "instagram"
+            ? (post.postingTimeIg || randomPlatformTimeInWindow5Min(post.date, "instagram", post.date))
+            : (post.postingTimeFb || randomPlatformTimeInWindow5Min(post.date, "facebook", post.date));
 
-        // Format posting time for Buffer: YYYY-MM-DD HH:MM
-        const formattedPostingTime = formatForBufferExport(post.date, postingTime);
+        // Format posting time for Buffer: M/D/YY HH:mm (e.g., "1/23/26 17:30")
+        const formattedPostingTime = formatBufferDateTime(post.date, postingTime);
 
         // Create CSV row: Text,Image URL,Tags,Posting Time
         const row = [
