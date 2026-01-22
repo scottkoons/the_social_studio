@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useRef } from "react";
 import { PostDay, PostDayAI, getPostDocId } from "@/lib/types";
-import { db } from "@/lib/firebase";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { db, storage } from "@/lib/firebase";
+import { doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
+import { ref, getDownloadURL } from "firebase/storage";
 import ImageUpload from "./ImageUpload";
 import StatusPill from "./ui/StatusPill";
 import ConfirmModal from "./ui/ConfirmModal";
-import { Loader2, RefreshCw, Trash2, AlertCircle } from "lucide-react";
+import PostDetailModal from "./PostDetailModal";
+import { Loader2, RefreshCw, Trash2, AlertCircle, Expand } from "lucide-react";
 import { isPastOrTodayInDenver, formatDisplayDate } from "@/lib/utils";
 import { movePostDay } from "@/lib/postDayMove";
 import { useAuth } from "@/context/AuthContext";
@@ -57,6 +59,10 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
 
     // Delete confirmation state
     const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+    // Detail modal state
+    const [showDetailModal, setShowDetailModal] = useState(false);
+    const [detailImageUrl, setDetailImageUrl] = useState<string | null>(null);
 
     // Live check if date is in the past
     const isPast = isPastOrTodayInDenver(post.date);
@@ -163,6 +169,24 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
     const handleOverwriteCancel = () => {
         setShowOverwriteModal(false);
         setPendingNewDate(null);
+    };
+
+    const handleOpenDetail = async () => {
+        // Fetch image URL if post has an image
+        if (post.imageAssetId && workspaceId) {
+            try {
+                const assetRef = doc(db, "workspaces", workspaceId, "assets", post.imageAssetId);
+                const assetSnap = await getDoc(assetRef);
+                if (assetSnap.exists()) {
+                    const asset = assetSnap.data();
+                    const url = await getDownloadURL(ref(storage, asset.storagePath));
+                    setDetailImageUrl(url);
+                }
+            } catch (err) {
+                console.error("Error fetching image URL:", err);
+            }
+        }
+        setShowDetailModal(true);
     };
 
     return (
@@ -345,6 +369,14 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
                     ) : (
                         <StatusPill status={post.status} wouldBeSkipped={isPast || !post.imageAssetId} />
                     )}
+                    <button
+                        onClick={handleOpenDetail}
+                        className="inline-flex items-center gap-1 text-[10px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                        title="View post details"
+                    >
+                        <Expand size={12} />
+                        Expand
+                    </button>
                     {onRegenerate && (
                         <button
                             onClick={() => onRegenerate(docId, {
@@ -391,6 +423,18 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
                         onDelete?.(docId);
                     }}
                     onCancel={() => setShowDeleteModal(false)}
+                />
+
+                {/* Post detail modal */}
+                <PostDetailModal
+                    isOpen={showDetailModal}
+                    onClose={() => {
+                        setShowDetailModal(false);
+                        setDetailImageUrl(null);
+                    }}
+                    post={post}
+                    imageUrl={detailImageUrl}
+                    ai={localAi}
                 />
             </td>
         </tr>
