@@ -145,7 +145,7 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
         setIsSaving(true);
         setDateError(null);
 
-        const result = await movePostDay(workspaceId, docId, newDate, { overwrite: false, platform: post.platform });
+        const result = await movePostDay(workspaceId, docId, newDate, { overwrite: false });
 
         if (result.needsConfirmOverwrite) {
             setPendingNewDate(newDate);
@@ -168,7 +168,7 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
         setIsSaving(true);
         setDateError(null);
 
-        const result = await movePostDay(workspaceId, docId, pendingNewDate, { overwrite: true, platform: post.platform });
+        const result = await movePostDay(workspaceId, docId, pendingNewDate, { overwrite: true });
 
         if (!result.ok) {
             setDateError(result.error || "Failed to change date.");

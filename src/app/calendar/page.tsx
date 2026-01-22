@@ -12,8 +12,6 @@ import ConfirmModal from "@/components/ui/ConfirmModal";
 import { ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
 import { format, startOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, isSameMonth } from "date-fns";
 import { PostDay, getPostDocId } from "@/lib/types";
-import PlatformFilter from "@/components/ui/PlatformFilter";
-import type { PlatformFilterValue } from "@/components/ReviewTable";
 import { getTodayInDenver, formatDisplayDate } from "@/lib/utils";
 import { formatTimeForDisplay, randomTimeInWindow5Min } from "@/lib/postingTime";
 import { movePostDay } from "@/lib/postDayMove";
@@ -38,7 +36,6 @@ export default function CalendarPage() {
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [posts, setPosts] = useState<Map<string, PostDay>>(new Map()); // Keyed by docId
     const [loading, setLoading] = useState(true);
-    const [platformFilter, setPlatformFilter] = useState<PlatformFilterValue>("all");
 
     // Drag and drop state
     const [draggedPost, setDraggedPost] = useState<DragData | null>(null);
@@ -105,20 +102,16 @@ export default function CalendarPage() {
         return () => unsubscribe();
     }, [user, workspaceId, gridStartStr, gridEndStr]);
 
-    // Helper to get posts for a specific date, filtered by platform
+    // Helper to get posts for a specific date
     const getPostsForDate = useCallback((dateStr: string): PostDay[] => {
         const result: PostDay[] = [];
         posts.forEach((post) => {
-            if (post.date !== dateStr) return;
-            // Apply platform filter
-            if (platformFilter !== "all") {
-                const postPlatform = post.platform || "facebook"; // Legacy posts default to facebook
-                if (postPlatform !== platformFilter) return;
+            if (post.date === dateStr) {
+                result.push(post);
             }
-            result.push(post);
         });
         return result;
-    }, [posts, platformFilter]);
+    }, [posts]);
 
     const goToPreviousMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
     const goToNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
@@ -136,8 +129,7 @@ export default function CalendarPage() {
 
         setIsMoving(true);
         const result = await movePostDay(workspaceId, sourceDocId, targetDate, {
-            overwrite,
-            platform: sourcePost.platform
+            overwrite
         });
 
         if (result.needsConfirmOverwrite) {
@@ -383,13 +375,8 @@ export default function CalendarPage() {
                         </button>
                     </div>
                     <div className="flex items-center gap-2 md:gap-3 flex-wrap">
-                        {/* Platform Filter */}
-                        <div className="sm:pl-2 sm:border-l border-[var(--border-primary)]">
-                            <PlatformFilter value={platformFilter} onChange={setPlatformFilter} />
-                        </div>
-
                         {/* PDF Export Controls */}
-                        <div className="flex items-center gap-2 pl-2 border-l border-[var(--border-primary)]">
+                        <div className="flex items-center gap-2">
                             <label className="hidden md:flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
                                 <input
                                     type="checkbox"
@@ -575,21 +562,6 @@ interface DayCellProps {
     onDrop: (e: React.DragEvent, dateStr: string) => void;
 }
 
-// Platform badge for calendar cell
-function CalendarPlatformBadge({ platform }: { platform?: string }) {
-    const platformName = platform || "facebook";
-    const isFacebook = platformName === "facebook";
-    return (
-        <span className={`inline-flex items-center px-1 py-0.5 rounded text-[8px] font-semibold uppercase ${
-            isFacebook
-                ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
-                : "bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400"
-        }`}>
-            {isFacebook ? "FB" : "IG"}
-        </span>
-    );
-}
-
 function DayCell({
     dateStr,
     day,
@@ -656,15 +628,6 @@ function DayCell({
                 `}>
                     {format(day, "d")}
                 </span>
-
-                {/* Platform badges */}
-                {hasPosts && (
-                    <div className="flex gap-0.5">
-                        {posts.map((p) => (
-                            <CalendarPlatformBadge key={getPostDocId(p)} platform={p.platform} />
-                        ))}
-                    </div>
-                )}
             </div>
 
             {/* Post content - show first post's thumbnail and status */}

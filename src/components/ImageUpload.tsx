@@ -3,7 +3,7 @@
 import { useCallback, useState, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 import { useAuth } from "@/context/AuthContext";
-import { PostDay } from "@/lib/types";
+import { PostDay, getPostDocId } from "@/lib/types";
 import { storage, db } from "@/lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { doc, setDoc, updateDoc, getDoc, serverTimestamp } from "firebase/firestore";
@@ -65,8 +65,11 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
 
             await setDoc(doc(db, "workspaces", workspaceId, "assets", assetId), assetData);
 
+            // Get the doc ID for this post
+            const docId = getPostDocId(post);
+
             // Link asset to post_day
-            await updateDoc(doc(db, "workspaces", workspaceId, "post_days", post.date), {
+            await updateDoc(doc(db, "workspaces", workspaceId, "post_days", docId), {
                 imageAssetId: assetId,
                 updatedAt: serverTimestamp(),
             });
@@ -78,12 +81,13 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
         } finally {
             onUploadEnd();
         }
-    }, [user, workspaceId, post.date, onUploadStart, onUploadEnd]);
+    }, [user, workspaceId, post, onUploadStart, onUploadEnd]);
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
         accept: { 'image/*': [] },
-        multiple: false
+        multiple: false,
+        useFsAccessApi: false,
     });
 
     const removeImage = async (e: React.MouseEvent) => {
@@ -91,10 +95,14 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
         e.stopPropagation();
         onUploadStart();
         try {
-            await updateDoc(doc(db, "workspaces", workspaceId, "post_days", post.date), {
+            // Get the doc ID for this post
+            const docId = getPostDocId(post);
+
+            await updateDoc(doc(db, "workspaces", workspaceId, "post_days", docId), {
                 imageAssetId: null,
                 updatedAt: serverTimestamp(),
             });
+
             setAsset(null);
         } catch (error) {
             console.error("Remove error:", error);

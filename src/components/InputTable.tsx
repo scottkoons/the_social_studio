@@ -45,9 +45,6 @@ export default function InputTable({ posts, selectedIds, onSelectRow, onSelectAl
                             />
                         </th>
                         <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 md:px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10">
-                            Platform
-                        </th>
-                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 md:px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10">
                             Date
                         </th>
                         <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 md:px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10">

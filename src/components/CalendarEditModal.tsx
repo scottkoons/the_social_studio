@@ -5,7 +5,7 @@ import { X, Trash2, Copy, Upload, Loader2, Sparkles } from "lucide-react";
 import Image from "next/image";
 import { PostDay, getPostDocId } from "@/lib/types";
 import { db, storage, functions } from "@/lib/firebase";
-import { doc, updateDoc, deleteDoc, setDoc, getDoc, serverTimestamp, deleteField } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, setDoc, getDoc, serverTimestamp, deleteField, writeBatch } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useDropzone } from "react-dropzone";
@@ -20,21 +20,6 @@ interface GeneratePostCopyResponse {
 
 function countWords(text: string): number {
     return text.trim() ? text.trim().split(/\s+/).length : 0;
-}
-
-// Platform badge component
-function PlatformBadge({ platform }: { platform?: string }) {
-    const platformName = platform || "facebook";
-    const isFacebook = platformName === "facebook";
-    return (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
-            isFacebook
-                ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
-                : "bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400"
-        }`}>
-            {isFacebook ? "FB" : "IG"}
-        </span>
-    );
 }
 
 interface CalendarEditModalProps {
@@ -124,6 +109,7 @@ export default function CalendarEditModal({
         onDrop,
         accept: { "image/*": [] },
         multiple: false,
+        useFsAccessApi: false, // Better browser compatibility for drag and drop
     });
 
     const handleRemoveImage = () => {
@@ -155,8 +141,8 @@ export default function CalendarEditModal({
             const docId = getPostDocId(post);
             const docRef = doc(db, "workspaces", workspaceId, "post_days", docId);
 
-            // Build target doc ID with platform (for date changes)
-            const targetDocId = post.platform ? `${date}-${post.platform}` : date;
+            // Target doc ID for date changes (one doc per date)
+            const targetDocId = date;
 
             // Check if date changed and target exists
             if (date !== post.date) {
@@ -173,10 +159,12 @@ export default function CalendarEditModal({
 
             // Handle image upload if new file
             let newAssetId: string | null = post.imageAssetId || null;
+            let imageDownloadUrl: string | null = null;
             if (newImageFile) {
                 const storagePath = `assets/${workspaceId}/${date}/${newImageFile.name}`;
                 const storageRef = ref(storage, storagePath);
                 await uploadBytes(storageRef, newImageFile);
+                imageDownloadUrl = await getDownloadURL(storageRef);
 
                 const assetId = crypto.randomUUID();
                 const assetData = {
@@ -219,6 +207,13 @@ export default function CalendarEditModal({
                 updatedAt: serverTimestamp(),
             };
 
+            // Add imageUrl if we have a download URL
+            if (imageDownloadUrl) {
+                updateData.imageUrl = imageDownloadUrl;
+            } else if (removeImage) {
+                updateData.imageUrl = deleteField();
+            }
+
             // If date changed, move the post
             if (date !== post.date) {
                 const targetDocRef = doc(db, "workspaces", workspaceId, "post_days", targetDocId);
@@ -228,7 +223,6 @@ export default function CalendarEditModal({
                 const newDocData = stripUndefined({
                     ...post,
                     date,
-                    platform: post.platform, // Preserve platform
                     postingTime,
                     postingTimeSource: "auto" as const, // Date change always resets to auto
                     ai: {
@@ -237,6 +231,7 @@ export default function CalendarEditModal({
                         meta: post.ai?.meta,
                     },
                     imageAssetId: newAssetId,
+                    imageUrl: imageDownloadUrl || undefined,
                     status: post.status === "sent" ? "sent" : "edited",
                     updatedAt: serverTimestamp(),
                 });
@@ -405,10 +400,7 @@ export default function CalendarEditModal({
             <div className="bg-[var(--bg-card)] rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 md:px-5 py-3 md:py-4 border-b border-[var(--border-primary)] bg-[var(--bg-secondary)]">
-                    <div className="flex items-center gap-2">
-                        <PlatformBadge platform={post.platform} />
-                        <h2 className="font-semibold text-sm md:text-base text-[var(--text-primary)]">Edit Post - {formatDisplayDate(post.date)}</h2>
-                    </div>
+                    <h2 className="font-semibold text-sm md:text-base text-[var(--text-primary)]">Edit Post - {formatDisplayDate(post.date)}</h2>
                     <button
                         onClick={onClose}
                         className="p-2 md:p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors"

@@ -1,12 +1,11 @@
 import { db } from "@/lib/firebase";
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
-import { stripUndefined } from "@/lib/utils";
-import { PostDay, PostPlatform } from "@/lib/types";
+import { stripUndefined, getTodayInDenver } from "@/lib/utils";
+import { PostDay } from "@/lib/types";
 import { generatePostingTimeForDateChange } from "@/lib/postingTime";
 
 export interface MovePostDayOptions {
     overwrite?: boolean;
-    platform?: PostPlatform; // Platform for the post (used for new doc ID format)
 }
 
 export interface MovePostDayResult {
@@ -24,12 +23,16 @@ export interface MovePostDayResult {
  * - Calendar drag/drop
  * - Calendar edit modal
  *
+ * Rules:
+ * - Cannot move to a past date
+ * - Only one post per date allowed
+ *
  * All screens stay in sync via Firestore onSnapshot listeners.
  *
  * @param workspaceId - The workspace ID
- * @param fromDocId - Source document ID (can be "YYYY-MM-DD" or "YYYY-MM-DD-platform")
+ * @param fromDocId - Source document ID (YYYY-MM-DD)
  * @param toDate - Target date (YYYY-MM-DD)
- * @param options - { overwrite: boolean, platform?: PostPlatform }
+ * @param options - { overwrite: boolean }
  * @returns MovePostDayResult
  */
 export async function movePostDay(
@@ -38,7 +41,7 @@ export async function movePostDay(
     toDate: string,
     options: MovePostDayOptions = {}
 ): Promise<MovePostDayResult> {
-    const { overwrite = false, platform } = options;
+    const { overwrite = false } = options;
 
     // Validate inputs
     if (!workspaceId) {
@@ -48,10 +51,14 @@ export async function movePostDay(
         return { ok: false, error: "Both source and target are required" };
     }
 
-    // Determine the target doc ID based on platform
-    // If platform is provided, use new format: YYYY-MM-DD-platform
-    // Otherwise, use the legacy format: YYYY-MM-DD
-    const toDocId = platform ? `${toDate}-${platform}` : toDate;
+    // Rule: Cannot move to a past date
+    const today = getTodayInDenver();
+    if (toDate < today) {
+        return { ok: false, error: "Cannot move to a past date" };
+    }
+
+    // Target doc ID is just the date (one doc per date)
+    const toDocId = toDate;
 
     // No-op if same document
     if (fromDocId === toDocId) {
@@ -70,7 +77,7 @@ export async function movePostDay(
 
         const sourceData = sourceSnap.data() as PostDay;
 
-        // Check if target exists
+        // Check if target exists (rule: one post per date)
         const targetSnap = await getDoc(targetRef);
         if (targetSnap.exists() && !overwrite) {
             // Signal that confirmation is needed
@@ -85,11 +92,13 @@ export async function movePostDay(
         const newDocData = stripUndefined({
             ...sourceData,
             date: toDate,
-            platform: platform || sourceData.platform, // Preserve platform
             postingTime: newPostingTime,
             postingTimeSource: "auto" as const,
             updatedAt: serverTimestamp(),
         });
+
+        // Remove platform field if it exists (we're moving to single-doc model)
+        delete (newDocData as any).platform;
 
         // Write to target
         await setDoc(targetRef, newDocData);
@@ -114,15 +123,12 @@ export async function movePostDay(
  */
 export async function checkPostExistsAtDate(
     workspaceId: string,
-    date: string,
-    platform?: PostPlatform
+    date: string
 ): Promise<boolean> {
     if (!workspaceId || !date) return false;
 
     try {
-        // Check using the appropriate doc ID format
-        const docId = platform ? `${date}-${platform}` : date;
-        const docRef = doc(db, "workspaces", workspaceId, "post_days", docId);
+        const docRef = doc(db, "workspaces", workspaceId, "post_days", date);
         const snap = await getDoc(docRef);
         return snap.exists();
     } catch {

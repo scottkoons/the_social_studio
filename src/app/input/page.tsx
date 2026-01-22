@@ -11,12 +11,10 @@ import DashboardCard from "@/components/ui/DashboardCard";
 import Toast from "@/components/ui/Toast";
 import { Plus, Trash2, X } from "lucide-react";
 import { format, addDays } from "date-fns";
-import { PostDay, PostPlatform, getPostDocId } from "@/lib/types";
+import { PostDay, getPostDocId } from "@/lib/types";
 import { getTodayInDenver } from "@/lib/utils";
 import { useHidePastUnsent } from "@/hooks/useHidePastUnsent";
 import { randomTimeInWindow5Min } from "@/lib/postingTime";
-
-type PlatformFilter = "all" | "facebook" | "instagram";
 
 export default function InputPage() {
     const { user, workspaceId, workspaceLoading } = useAuth();
@@ -25,9 +23,6 @@ export default function InputPage() {
     const [loading, setLoading] = useState(true);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-    // Platform filter
-    const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
-
     // Date from query param for highlighting/scrolling
     const [highlightedDate, setHighlightedDate] = useState<string | null>(null);
 
@@ -35,34 +30,24 @@ export default function InputPage() {
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
-    // Add row modal state
-    const [showAddModal, setShowAddModal] = useState(false);
-    const [newPostPlatform, setNewPostPlatform] = useState<PostPlatform>("facebook");
+    // Add row state
     const [isAdding, setIsAdding] = useState(false);
 
     // Toast state
     const [toast, setToast] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
     // Use shared hook for filtering past unsent posts (controlled from Settings)
-    const { filteredPosts: postsWithoutPast, hidePastUnsent } = useHidePastUnsent(posts);
-
-    // Apply platform filter
-    const filteredPosts = postsWithoutPast.filter(p => {
-        if (platformFilter === "all") return true;
-        // Legacy posts without platform default to "facebook"
-        const postPlatform = p.platform || "facebook";
-        return postPlatform === platformFilter;
-    });
+    const { filteredPosts, hidePastUnsent } = useHidePastUnsent(posts);
 
     // When filter is enabled, deselect any posts that become hidden
     useEffect(() => {
-        if (!hidePastUnsent && platformFilter === "all") return;
+        if (!hidePastUnsent) return;
         const visibleIds = new Set(filteredPosts.map(p => getPostDocId(p)));
         setSelectedIds(prev => {
             const filtered = new Set([...prev].filter(id => visibleIds.has(id)));
             return filtered.size !== prev.size ? filtered : prev;
         });
-    }, [hidePastUnsent, filteredPosts, platformFilter]);
+    }, [hidePastUnsent, filteredPosts]);
 
     // Read date query param on mount
     useEffect(() => {
@@ -81,7 +66,7 @@ export default function InputPage() {
         );
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const postsData = snapshot.docs.map((docSnap) => ({
-                docId: docSnap.id, // Store the actual Firestore doc ID
+                docId: docSnap.id,
                 ...docSnap.data(),
             })) as PostDay[];
             setPosts(postsData);
@@ -115,42 +100,32 @@ export default function InputPage() {
         }
     };
 
-    const handleAddClick = () => {
-        setShowAddModal(true);
-    };
-
-    const handleAddConfirm = async () => {
-        if (!user || !workspaceId) return;
+    const handleAddRow = async () => {
+        if (!user || !workspaceId || isAdding) return;
 
         setIsAdding(true);
 
-        // Find the next available date for this platform
+        // Find the next available date
         let nextDate = new Date();
         let dateStr = format(nextDate, "yyyy-MM-dd");
         const today = getTodayInDenver();
         if (dateStr < today) dateStr = today;
 
-        // Get existing dates for this platform
-        const existingDatesForPlatform = new Set(
-            posts
-                .filter(p => (p.platform || "facebook") === newPostPlatform)
-                .map(p => p.date)
-        );
+        // Get existing dates
+        const existingDates = new Set(posts.map(p => p.date));
 
-        while (existingDatesForPlatform.has(dateStr)) {
+        // Find next available date
+        while (existingDates.has(dateStr)) {
             nextDate = addDays(nextDate, 1);
             dateStr = format(nextDate, "yyyy-MM-dd");
         }
 
         try {
-            // New doc ID format: date-platform
-            const docId = `${dateStr}-${newPostPlatform}`;
-            const docRef = doc(db, "workspaces", workspaceId, "post_days", docId);
-            const postingTime = randomTimeInWindow5Min(dateStr, `${newPostPlatform}-${dateStr}`);
-
+            // Create ONE document per date (posts to both FB & IG)
+            const docRef = doc(db, "workspaces", workspaceId, "post_days", dateStr);
+            const postingTime = randomTimeInWindow5Min(dateStr, dateStr);
             await setDoc(docRef, {
                 date: dateStr,
-                platform: newPostPlatform,
                 starterText: "",
                 postingTime,
                 postingTimeSource: "auto",
@@ -159,8 +134,7 @@ export default function InputPage() {
                 updatedAt: serverTimestamp(),
             });
 
-            setShowAddModal(false);
-            showToast('success', `Added new ${newPostPlatform === 'facebook' ? 'Facebook' : 'Instagram'} post for ${dateStr}.`);
+            showToast('success', `Added post for ${dateStr}.`);
         } catch (error) {
             console.error("Error adding row:", error);
             showToast('error', "Failed to add row. Please try again.");
@@ -225,23 +199,6 @@ export default function InputPage() {
             <PageHeader
                 title="Content Input"
                 subtitle="Edit and manage your scheduled posts."
-                secondaryActions={
-                    <div className="flex items-center gap-1 bg-[var(--bg-tertiary)] rounded-lg p-1">
-                        {(["all", "facebook", "instagram"] as PlatformFilter[]).map((filter) => (
-                            <button
-                                key={filter}
-                                onClick={() => setPlatformFilter(filter)}
-                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                                    platformFilter === filter
-                                        ? "bg-[var(--bg-card)] text-[var(--text-primary)] shadow-sm"
-                                        : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                                }`}
-                            >
-                                {filter === "all" ? "All" : filter === "facebook" ? "Facebook" : "Instagram"}
-                            </button>
-                        ))}
-                    </div>
-                }
                 actions={
                     <>
                         {selectedIds.size > 0 && (
@@ -255,11 +212,16 @@ export default function InputPage() {
                             </button>
                         )}
                         <button
-                            onClick={handleAddClick}
-                            className="inline-flex items-center gap-2 bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+                            onClick={handleAddRow}
+                            disabled={isAdding}
+                            className="inline-flex items-center gap-2 bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            <Plus size={16} />
-                            Add Row
+                            {isAdding ? (
+                                <span className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white" />
+                            ) : (
+                                <Plus size={16} />
+                            )}
+                            {isAdding ? "Adding..." : "Add Row"}
                         </button>
                     </>
                 }
@@ -290,84 +252,6 @@ export default function InputPage() {
                     message={toast.message}
                     onClose={() => setToast(null)}
                 />
-            )}
-
-            {/* Add Row Modal */}
-            {showAddModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-[var(--bg-card)] rounded-xl shadow-2xl max-w-sm w-full overflow-hidden">
-                        <div className="bg-[var(--bg-secondary)] px-5 py-4 border-b border-[var(--border-primary)] flex items-center justify-between">
-                            <h3 className="font-semibold text-[var(--text-primary)]">Add New Post</h3>
-                            <button
-                                onClick={() => setShowAddModal(false)}
-                                disabled={isAdding}
-                                className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors disabled:opacity-50"
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        <div className="px-5 py-5">
-                            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
-                                Platform
-                            </label>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => setNewPostPlatform("facebook")}
-                                    disabled={isAdding}
-                                    className={`flex-1 px-4 py-3 rounded-lg text-sm font-medium transition-colors border ${
-                                        newPostPlatform === "facebook"
-                                            ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700"
-                                            : "bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-primary)] hover:bg-[var(--bg-card-hover)]"
-                                    }`}
-                                >
-                                    Facebook
-                                </button>
-                                <button
-                                    onClick={() => setNewPostPlatform("instagram")}
-                                    disabled={isAdding}
-                                    className={`flex-1 px-4 py-3 rounded-lg text-sm font-medium transition-colors border ${
-                                        newPostPlatform === "instagram"
-                                            ? "bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-300 border-pink-300 dark:border-pink-700"
-                                            : "bg-[var(--bg-tertiary)] text-[var(--text-secondary)] border-[var(--border-primary)] hover:bg-[var(--bg-card-hover)]"
-                                    }`}
-                                >
-                                    Instagram
-                                </button>
-                            </div>
-                            <p className="text-xs text-[var(--text-muted)] mt-3">
-                                A new post will be created for the next available date.
-                            </p>
-                        </div>
-
-                        <div className="px-5 py-4 bg-[var(--bg-secondary)] border-t border-[var(--border-primary)] flex justify-end gap-3">
-                            <button
-                                onClick={() => setShowAddModal(false)}
-                                disabled={isAdding}
-                                className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleAddConfirm}
-                                disabled={isAdding}
-                                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {isAdding ? (
-                                    <>
-                                        <span className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white" />
-                                        Adding...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Plus size={16} />
-                                        Add Post
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
             )}
 
             {/* Delete Confirmation Modal */}

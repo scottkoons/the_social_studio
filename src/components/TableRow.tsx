@@ -21,24 +21,6 @@ interface TableRowProps {
     onHighlightClear: () => void;
 }
 
-// Platform badge component
-function PlatformBadge({ platform }: { platform?: string }) {
-    const platformName = platform || "facebook";
-    const isFacebook = platformName === "facebook";
-
-    return (
-        <span
-            className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
-                isFacebook
-                    ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
-                    : "bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400"
-            }`}
-        >
-            {isFacebook ? "FB" : "IG"}
-        </span>
-    );
-}
-
 export default function TableRow({ post, allPostDates, isSelected, onSelect, isHighlighted, onHighlightClear }: TableRowProps) {
     const { user, workspaceId } = useAuth();
     const [starterText, setStarterText] = useState(post.starterText || "");
@@ -60,7 +42,6 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
     useEffect(() => {
         if (isHighlighted && rowRef.current) {
             rowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-            // Clear highlight after a delay
             const timer = setTimeout(() => {
                 onHighlightClear();
             }, 3000);
@@ -101,9 +82,7 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
         setIsSaving(true);
         setError(null);
 
-        // For platform-aware posts, we need to update the movePostDay logic
-        // For now, just update the date field in the existing document
-        const result = await movePostDay(workspaceId, docId, newDate, { overwrite: false, platform: post.platform });
+        const result = await movePostDay(workspaceId, docId, newDate, { overwrite: false });
 
         if (result.needsConfirmOverwrite) {
             setPendingNewDate(newDate);
@@ -126,7 +105,7 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
         setIsSaving(true);
         setError(null);
 
-        const result = await movePostDay(workspaceId, docId, pendingNewDate, { overwrite: true, platform: post.platform });
+        const result = await movePostDay(workspaceId, docId, pendingNewDate, { overwrite: true });
 
         if (!result.ok) {
             setError(result.error || "Failed to change date.");
@@ -159,11 +138,6 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
                     onChange={(e) => onSelect(docId, e.target.checked)}
                     className="h-5 w-5 md:h-4 md:w-4 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-offset-0 cursor-pointer bg-[var(--input-bg)]"
                 />
-            </td>
-
-            {/* Platform */}
-            <td className="px-2 md:px-4 py-3 md:py-4 align-top">
-                <PlatformBadge platform={post.platform} />
             </td>
 
             {/* Date */}
