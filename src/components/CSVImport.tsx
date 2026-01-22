@@ -583,29 +583,45 @@ export default function CSVImport() {
             <div
                 {...getRootProps()}
                 className={`
-                    inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer
+                    flex flex-col items-center justify-center gap-3 p-6 rounded-xl transition-all cursor-pointer
+                    border-2 border-dashed
                     ${isDragActive
-                        ? 'bg-[var(--accent-bg)] border-2 border-dashed border-[var(--accent-primary)] text-[var(--accent-primary)]'
-                        : 'bg-[var(--bg-card)] border border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+                        ? 'bg-[var(--accent-bg)] border-[var(--accent-primary)] text-[var(--accent-primary)]'
+                        : 'bg-[var(--bg-tertiary)]/50 border-[var(--border-secondary)] hover:border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
                     }
                     ${(!canImport || isImporting || showModal || importingImages) ? 'opacity-50 cursor-not-allowed' : ''}
                 `}
             >
                 <input {...getInputProps()} />
-                {isImporting || importingImages ? (
-                    <span className="animate-spin rounded-full h-4 w-4 border-2 border-[var(--border-primary)] border-t-[var(--accent-primary)]" />
-                ) : isDragActive ? (
-                    <Upload size={16} />
-                ) : (
-                    <FileDown size={16} />
-                )}
-                {importingImages ? (
-                    <span>Importing ({imageProgress.current}/{imageProgress.total})</span>
-                ) : isDragActive ? (
-                    "Drop CSV here"
-                ) : (
-                    "Import CSV"
-                )}
+                <div className={`
+                    w-12 h-12 rounded-full flex items-center justify-center
+                    ${isDragActive
+                        ? 'bg-[var(--accent-primary)]/20'
+                        : 'bg-[var(--bg-card)]'
+                    }
+                `}>
+                    {isImporting || importingImages ? (
+                        <span className="animate-spin rounded-full h-6 w-6 border-2 border-[var(--border-primary)] border-t-[var(--accent-primary)]" />
+                    ) : isDragActive ? (
+                        <Upload size={24} className="text-[var(--accent-primary)]" />
+                    ) : (
+                        <FileDown size={24} />
+                    )}
+                </div>
+                <div className="text-center">
+                    {importingImages ? (
+                        <p className="text-sm font-medium">Importing images ({imageProgress.current}/{imageProgress.total})</p>
+                    ) : isImporting ? (
+                        <p className="text-sm font-medium">Processing CSV...</p>
+                    ) : isDragActive ? (
+                        <p className="text-sm font-medium text-[var(--accent-primary)]">Drop CSV file here</p>
+                    ) : (
+                        <>
+                            <p className="text-sm font-medium">Drag & drop a CSV file here</p>
+                            <p className="text-xs text-[var(--text-tertiary)] mt-1">or click to browse</p>
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* Status Toast */}

@@ -286,18 +286,12 @@ export default function ReviewPage() {
 
         let generated = 0;
         let regenerated = 0;
-        let skippedMissingImage = 0;
         let skippedPastUnsent = 0;
         let failed = 0;
 
         const toProcess: { post: PostDay; hadExistingAi: boolean }[] = [];
 
         for (const post of targets) {
-            if (!post.imageAssetId) {
-                skippedMissingImage++;
-                continue;
-            }
-
             const isPast = isPastOrTodayInDenver(post.date);
             if (isPast && post.status !== "sent") {
                 skippedPastUnsent++;
@@ -369,19 +363,14 @@ export default function ReviewPage() {
 
         setIsGenerating(false);
 
-        const totalSkipped = skippedMissingImage + skippedPastUnsent;
         const totalProcessed = generated + regenerated;
 
-        if (totalProcessed === 0 && totalSkipped > 0) {
-            const skipReasons: string[] = [];
-            if (skippedMissingImage > 0) skipReasons.push(`${skippedMissingImage} missing image`);
-            if (skippedPastUnsent > 0) skipReasons.push(`${skippedPastUnsent} past unsent`);
-            showToast('warn', `Skipped all: ${skipReasons.join(', ')}.`);
-        } else if (failed > 0 || totalSkipped > 0) {
+        if (totalProcessed === 0 && skippedPastUnsent > 0) {
+            showToast('warn', `Skipped all: ${skippedPastUnsent} past unsent.`);
+        } else if (failed > 0 || skippedPastUnsent > 0) {
             const parts: string[] = [];
             if (generated > 0) parts.push(`Generated ${generated}`);
             if (regenerated > 0) parts.push(`Regenerated ${regenerated}`);
-            if (skippedMissingImage > 0) parts.push(`Skipped ${skippedMissingImage} (missing image)`);
             if (skippedPastUnsent > 0) parts.push(`Skipped ${skippedPastUnsent} (past unsent)`);
             if (failed > 0) parts.push(`Failed ${failed}`);
             showToast('warn', parts.join(' • '));

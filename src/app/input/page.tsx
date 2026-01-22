@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { collection, query, onSnapshot, orderBy, doc, setDoc, writeBatch, serverTimestamp } from "firebase/firestore";
 import InputTable from "@/components/InputTable";
+import CSVImport from "@/components/CSVImport";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCard from "@/components/ui/DashboardCard";
 import Toast from "@/components/ui/Toast";
@@ -228,6 +229,11 @@ export default function InputPage() {
                     </>
                 }
             />
+
+            {/* CSV Import Drop Zone */}
+            <div className="mb-6">
+                <CSVImport />
+            </div>
 
             <DashboardCard noPadding>
                 {loading ? (
