@@ -1,22 +1,15 @@
 import { PostDay } from "./types";
 import { randomPlatformTimeInWindow5Min } from "./postingTime";
-import { parseISO, format } from "date-fns";
 
 export type BufferPlatform = "instagram" | "facebook";
 
 /**
  * Formats date and time for Buffer CSV export.
- * Format: M/D/YY HH:mm (e.g., "1/23/26 17:30")
+ * Format: YYYY-MM-DD HH:MM (e.g., "2026-01-23 17:30")
  */
 function formatBufferDateTime(dateISO: string, time: string): string {
-    const date = parseISO(dateISO);
-    const [hours, minutes] = time.split(":");
-
-    // Format: M/D/YY (no leading zeros on month/day, 2-digit year)
-    const dateStr = format(date, "M/d/yy");
-
-    // Time is already in HH:mm format
-    return `${dateStr} ${hours}:${minutes}`;
+    // dateISO is already YYYY-MM-DD, time is HH:MM
+    return `${dateISO} ${time}`;
 }
 
 export interface ExportResult {
@@ -111,10 +104,10 @@ export function postHasImage(
  * Buffer CSV format:
  * Text,Image URL,Tags,Posting Time
  *
- * - Text: Caption + two line breaks + space-separated hashtags (with # symbols)
+ * - Text: Caption only (hashtags are separate)
  * - Image URL: Firebase Storage download URL
  * - Tags: Empty (not used for hashtags)
- * - Posting Time: M/D/YY HH:mm format (e.g., "1/23/26 17:30")
+ * - Posting Time: YYYY-MM-DD HH:MM format (e.g., "2026-01-23 17:30")
  */
 export function generateBufferCsv(
     posts: PostDay[],
@@ -161,15 +154,15 @@ export function generateBufferCsv(
             continue;
         }
 
-        // Build text with caption + hashtags
-        const text = buildBufferText(platformData.caption, platformData.hashtags || []);
+        // Use caption only (hashtags go in Tags column if needed)
+        const text = platformData.caption;
 
         // Get platform-specific posting time - generate if missing
         const postingTime = platform === "instagram"
             ? (post.postingTimeIg || randomPlatformTimeInWindow5Min(post.date, "instagram", post.date))
             : (post.postingTimeFb || randomPlatformTimeInWindow5Min(post.date, "facebook", post.date));
 
-        // Format posting time for Buffer: M/D/YY HH:mm (e.g., "1/23/26 17:30")
+        // Format posting time for Buffer: YYYY-MM-DD HH:MM (e.g., "2026-01-23 17:30")
         const formattedPostingTime = formatBufferDateTime(post.date, postingTime);
 
         // Create CSV row: Text,Image URL,Tags,Posting Time

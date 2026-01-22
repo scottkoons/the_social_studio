@@ -746,18 +746,19 @@ function parseAIResponse(content: string): AIOutputSchema | null {
         .filter((t: string) => t !== "" && t !== "#");
     };
 
-    // Normalize then append global hashtags
+    // Normalize then append global hashtags - use same hashtags for both platforms
     const igHashtags = appendGlobalHashtags(normalizeHashtagsArray(parsed.ig.hashtags));
-    const fbHashtags = appendGlobalHashtags(normalizeHashtagsArray(parsed.fb.hashtags));
+    // Use IG hashtags for both platforms (more comprehensive set)
+    const sharedHashtags = igHashtags;
 
     return {
       ig: {
         caption: parsed.ig.caption,
-        hashtags: igHashtags,
+        hashtags: sharedHashtags,
       },
       fb: {
         caption: parsed.fb.caption,
-        hashtags: fbHashtags,
+        hashtags: sharedHashtags,
       },
       confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
       needsInfo: Boolean(parsed.needsInfo),
