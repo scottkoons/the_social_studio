@@ -347,10 +347,10 @@ export default function PlanningPage() {
                             Upload a CSV file to bulk-import posts. Each row creates posts for both Facebook and Instagram with the same content.
                         </p>
                         <div className="bg-[var(--bg-card)] rounded-lg p-3 font-mono text-xs text-[var(--text-secondary)]">
-                            <p className="text-[var(--text-muted)] mb-1"># CSV format:</p>
-                            <p>date,starterText,imageUrl</p>
-                            <p>2024-01-15,&quot;Today&apos;s special: Fish tacos!&quot;,https://...</p>
-                            <p>01/16/24,&quot;Happy hour from 4-6pm&quot;,</p>
+                            <p className="text-[var(--text-muted)] mb-1"># CSV format (Buffer compatible):</p>
+                            <p>Text,Image URL,Tags,Posting Time</p>
+                            <p>&quot;Today&apos;s special: Fish tacos!&quot;,https://...,,2024-01-15 12:30</p>
+                            <p>&quot;Happy hour from 4-6pm&quot;,,,2024-01-16 17:00</p>
                         </div>
                     </div>
                 </>

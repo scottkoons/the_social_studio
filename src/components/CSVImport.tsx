@@ -213,9 +213,10 @@ export default function CSVImport() {
 
                 for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
                     const row = data[rowIndex];
-                    const rawDate = row.date || row.Date || "";
-                    const starterText = row.starterText || row.StarterText || "";
-                    const imageUrl = row.imageUrl || row.ImageUrl || row.imageURL || "";
+                    // Support both old format (date,starterText,imageUrl) and Buffer format (Text,Image URL,Tags,Posting Time)
+                    const rawDate = row.date || row.Date || row["Posting Time"] || "";
+                    const starterText = row.starterText || row.StarterText || row.Text || row.text || "";
+                    const imageUrl = row.imageUrl || row.ImageUrl || row.imageURL || row["Image URL"] || "";
 
                     if (!rawDate || !rawDate.trim()) {
                         countersRef.current.skipped++;

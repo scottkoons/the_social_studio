@@ -21,8 +21,8 @@ export function parseCsvDate(input: string): string | null {
         return null;
     }
 
-    // Try ISO format: YYYY-MM-DD
-    const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    // Try ISO format: YYYY-MM-DD or YYYY-MM-DD HH:MM (Buffer format with time)
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+\d{2}:\d{2})?$/);
     if (isoMatch) {
         const [, year, month, day] = isoMatch;
         const y = parseInt(year, 10);
@@ -44,7 +44,8 @@ export function parseCsvDate(input: string): string | null {
             return null;
         }
 
-        return trimmed;
+        // Return just the date part (YYYY-MM-DD)
+        return `${year}-${month}-${day}`;
     }
 
     // Try Buffer format: MM/DD/YY or M/D/YY
