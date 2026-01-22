@@ -9,7 +9,7 @@ import { httpsCallable } from "firebase/functions";
 import { FileDown, AlertCircle, Check, X, Image, ChevronDown, ChevronUp, AlertTriangle, Upload } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { parseCsvDate, formatDisplayDate } from "@/lib/utils";
-import { randomTimeInWindow5Min } from "@/lib/postingTime";
+import { generatePlatformPostingTimes } from "@/lib/postingTime";
 
 // ============================================================================
 // Image URL Validation Helpers (Lightweight - no network requests)
@@ -325,12 +325,14 @@ export default function CSVImport() {
             try {
                 // One document per date (docId = date)
                 const docRef = doc(db, "workspaces", workspaceId, "post_days", row.date);
-                const postingTime = randomTimeInWindow5Min(row.date, row.date);
+                const postingTimes = generatePlatformPostingTimes(row.date, row.date);
                 await setDoc(docRef, {
                     date: row.date,
                     starterText: row.starterText,
-                    postingTime,
-                    postingTimeSource: "auto",
+                    postingTimeIg: postingTimes.ig,
+                    postingTimeFb: postingTimes.fb,
+                    postingTimeIgSource: "auto",
+                    postingTimeFbSource: "auto",
                     status: "input",
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
@@ -483,12 +485,14 @@ export default function CSVImport() {
                     rowsWithImagesRef.current.push(duplicate.row);
                 }
             } else if (action === "overwrite") {
-                const postingTime = randomTimeInWindow5Min(duplicate.row.date, duplicate.row.date);
+                const postingTimes = generatePlatformPostingTimes(duplicate.row.date, duplicate.row.date);
                 await setDoc(docRef, {
                     date: duplicate.row.date,
                     starterText: duplicate.row.starterText,
-                    postingTime,
-                    postingTimeSource: "auto",
+                    postingTimeIg: postingTimes.ig,
+                    postingTimeFb: postingTimes.fb,
+                    postingTimeIgSource: "auto",
+                    postingTimeFbSource: "auto",
                     status: "input",
                     createdAt: duplicate.existingData.createdAt || serverTimestamp(),
                     updatedAt: serverTimestamp(),

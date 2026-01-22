@@ -11,7 +11,7 @@ import { Loader2, RefreshCw, Trash2, AlertCircle } from "lucide-react";
 import { isPastOrTodayInDenver, formatDisplayDate } from "@/lib/utils";
 import { movePostDay } from "@/lib/postDayMove";
 import { useAuth } from "@/context/AuthContext";
-import { formatTimeForDisplay, randomTimeInWindow5Min } from "@/lib/postingTime";
+import { formatTimeForDisplay, generatePlatformPostingTimes } from "@/lib/postingTime";
 import type { PlatformFilterValue } from "./ReviewTable";
 
 interface ReviewRowProps {
@@ -33,24 +33,6 @@ const DEFAULT_AI: Omit<PostDayAI, 'meta'> & { meta?: PostDayAI['meta'] } = {
     ig: { caption: "", hashtags: [] },
     fb: { caption: "", hashtags: [] },
 };
-
-// Platform badge component
-function PlatformBadge({ platform }: { platform?: string }) {
-    const platformName = platform || "facebook";
-    const isFacebook = platformName === "facebook";
-
-    return (
-        <span
-            className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
-                isFacebook
-                    ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
-                    : "bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400"
-            }`}
-        >
-            {isFacebook ? "FB" : "IG"}
-        </span>
-    );
-}
 
 export default function ReviewRow({ post, isSelected, isGenerating, platformFilter = "all", onSelect, onRegenerate, onDelete }: ReviewRowProps) {
     const { user, workspaceId } = useAuth();
@@ -186,7 +168,7 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
     return (
         <tr className={`transition-colors ${isSelected ? 'bg-[var(--table-row-selected)]' : 'hover:bg-[var(--table-row-hover)]'}`}>
             {/* Checkbox */}
-            <td className="px-3 md:px-4 py-3 md:py-4 align-top">
+            <td className="px-2 md:px-3 py-2 md:py-3 align-top">
                 <input
                     type="checkbox"
                     checked={isSelected}
@@ -195,29 +177,44 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
                 />
             </td>
 
-            {/* Platform */}
-            <td className="px-2 md:px-4 py-3 md:py-4 align-top">
-                <PlatformBadge platform={post.platform} />
-            </td>
-
             {/* Date */}
-            <td className="px-2 md:px-4 py-3 md:py-4 align-top">
-                <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center gap-1 md:gap-2">
-                        <span className="text-xs md:text-sm font-medium text-[var(--text-primary)] whitespace-nowrap">
+            <td className="px-2 py-2 md:py-3 align-top">
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-1">
+                        <span className="text-xs font-medium text-[var(--text-primary)] whitespace-nowrap">
                             {formatDisplayDate(post.date)}
                         </span>
                         <input
                             type="date"
                             value={post.date}
                             onChange={(e) => handleDateChange(e.target.value)}
-                            className="w-6 h-6 md:w-5 md:h-5 opacity-50 md:opacity-0 hover:opacity-100 focus:opacity-100 cursor-pointer"
+                            className="w-5 h-5 opacity-50 hover:opacity-100 focus:opacity-100 cursor-pointer"
                             title="Change date"
                         />
                     </div>
-                    <span className="text-xs text-[var(--text-tertiary)]">
-                        {formatTimeForDisplay(post.postingTime || randomTimeInWindow5Min(post.date, post.date))}
-                    </span>
+                    {/* Platform-specific posting times */}
+                    <div className="flex flex-col gap-1">
+                        {showInstagram && (
+                            <PostingTimeEditor
+                                platform="instagram"
+                                time={post.postingTimeIg || generatePlatformPostingTimes(post.date, post.date).ig}
+                                source={post.postingTimeIgSource}
+                                postDocId={docId}
+                                workspaceId={workspaceId}
+                                onSaving={setIsSaving}
+                            />
+                        )}
+                        {showFacebook && (
+                            <PostingTimeEditor
+                                platform="facebook"
+                                time={post.postingTimeFb || generatePlatformPostingTimes(post.date, post.date).fb}
+                                source={post.postingTimeFbSource}
+                                postDocId={docId}
+                                workspaceId={workspaceId}
+                                onSaving={setIsSaving}
+                            />
+                        )}
+                    </div>
                     <div className="flex flex-wrap gap-1">
                         {isPast && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
@@ -256,7 +253,7 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
             </td>
 
             {/* Image */}
-            <td className="px-2 md:px-4 py-3 md:py-4 align-top">
+            <td className="px-2 py-2 md:py-3 align-top">
                 <ImageUpload
                     post={post}
                     onUploadStart={() => setIsSaving(true)}
@@ -266,35 +263,35 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
 
             {/* Instagram Content - hidden on mobile/tablet */}
             {showInstagram && (
-                <td className="px-2 md:px-4 py-3 md:py-4 align-top hidden lg:table-cell">
+                <td className="px-2 md:px-3 py-2 md:py-3 align-top hidden lg:table-cell">
                     {isGenerating ? (
-                        <div className="flex items-center justify-center h-[140px] text-[var(--text-tertiary)]">
+                        <div className="flex items-center justify-center h-[120px] text-[var(--text-tertiary)]">
                             <div className="flex flex-col items-center gap-2">
-                                <Loader2 className="animate-spin text-[var(--accent-primary)]" size={24} />
+                                <Loader2 className="animate-spin text-[var(--accent-primary)]" size={20} />
                                 <span className="text-xs">Generating...</span>
                             </div>
                         </div>
                     ) : (
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                             <div>
-                                <label className="text-[10px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-1 block">Caption</label>
+                                <label className="text-[9px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-0.5 block">Caption</label>
                                 <textarea
                                     value={localAi.ig.caption}
                                     onChange={(e) => updatePlatformField('ig', 'caption', e.target.value)}
-                                    className="w-full text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg p-2.5 focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)] min-h-[72px] resize-none leading-relaxed"
+                                    className="w-full text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--input-border)] bg-[var(--input-bg)] rounded p-2 focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)] min-h-[60px] resize-none leading-relaxed"
                                     placeholder="AI will generate caption..."
                                 />
-                                <div className="text-right mt-1">
-                                    <span className="text-xs text-[var(--text-muted)]">{countWords(localAi.ig.caption)} words</span>
+                                <div className="text-right">
+                                    <span className="text-[10px] text-[var(--text-muted)]">{countWords(localAi.ig.caption)} words</span>
                                 </div>
                             </div>
                             <div>
-                                <label className="text-[10px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-1 block">Hashtags</label>
+                                <label className="text-[9px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-0.5 block">Hashtags</label>
                                 <textarea
                                     value={hashtagsToString(localAi.ig.hashtags)}
                                     onChange={(e) => updatePlatformField('ig', 'hashtags', stringToHashtags(e.target.value))}
-                                    className="w-full text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg p-2.5 focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)] min-h-[48px] resize-none leading-relaxed"
-                                    placeholder="#hashtag1, #hashtag2, #hashtag3"
+                                    className="w-full text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--input-border)] bg-[var(--input-bg)] rounded p-2 focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)] min-h-[36px] resize-none leading-relaxed"
+                                    placeholder="#hashtag1, #hashtag2"
                                 />
                             </div>
                         </div>
@@ -304,35 +301,35 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
 
             {/* Facebook Content - hidden on mobile/tablet */}
             {showFacebook && (
-                <td className="px-2 md:px-4 py-3 md:py-4 align-top hidden lg:table-cell">
+                <td className="px-2 md:px-3 py-2 md:py-3 align-top hidden lg:table-cell">
                     {isGenerating ? (
-                        <div className="flex items-center justify-center h-[140px] text-[var(--text-tertiary)]">
+                        <div className="flex items-center justify-center h-[120px] text-[var(--text-tertiary)]">
                             <div className="flex flex-col items-center gap-2">
-                                <Loader2 className="animate-spin text-[var(--accent-primary)]" size={24} />
+                                <Loader2 className="animate-spin text-[var(--accent-primary)]" size={20} />
                                 <span className="text-xs">Generating...</span>
                             </div>
                         </div>
                     ) : (
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                             <div>
-                                <label className="text-[10px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-1 block">Caption</label>
+                                <label className="text-[9px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-0.5 block">Caption</label>
                                 <textarea
                                     value={localAi.fb.caption}
                                     onChange={(e) => updatePlatformField('fb', 'caption', e.target.value)}
-                                    className="w-full text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg p-2.5 focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)] min-h-[72px] resize-none leading-relaxed"
+                                    className="w-full text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--input-border)] bg-[var(--input-bg)] rounded p-2 focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)] min-h-[60px] resize-none leading-relaxed"
                                     placeholder="AI will generate caption..."
                                 />
-                                <div className="text-right mt-1">
-                                    <span className="text-xs text-[var(--text-muted)]">{countWords(localAi.fb.caption)} words</span>
+                                <div className="text-right">
+                                    <span className="text-[10px] text-[var(--text-muted)]">{countWords(localAi.fb.caption)} words</span>
                                 </div>
                             </div>
                             <div>
-                                <label className="text-[10px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-1 block">Hashtags</label>
+                                <label className="text-[9px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-0.5 block">Hashtags</label>
                                 <textarea
                                     value={hashtagsToString(localAi.fb.hashtags)}
                                     onChange={(e) => updatePlatformField('fb', 'hashtags', stringToHashtags(e.target.value))}
-                                    className="w-full text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg p-2.5 focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)] min-h-[48px] resize-none leading-relaxed"
-                                    placeholder="#hashtag1, #hashtag2, #hashtag3"
+                                    className="w-full text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--input-border)] bg-[var(--input-bg)] rounded p-2 focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)] min-h-[36px] resize-none leading-relaxed"
+                                    placeholder="#hashtag1, #hashtag2"
                                 />
                             </div>
                         </div>
@@ -341,25 +338,12 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
             )}
 
             {/* Status */}
-            <td className="px-2 md:px-4 py-3 md:py-4 align-top text-right">
-                <div className="flex flex-col items-end gap-2">
+            <td className="px-2 py-2 md:py-3 align-top text-right">
+                <div className="flex flex-col items-end gap-1.5">
                     {isSaving ? (
                         <Loader2 className="animate-spin text-[var(--accent-primary)]" size={16} />
                     ) : (
                         <StatusPill status={post.status} wouldBeSkipped={isPast || !post.imageAssetId} />
-                    )}
-                    {localAi.meta?.confidence != null && localAi.meta.confidence > 0 && (
-                        <span
-                            className={`text-[10px] px-1.5 py-0.5 rounded ${
-                                localAi.meta.confidence >= 0.7
-                                    ? "bg-[var(--bg-tertiary)] text-[var(--text-secondary)]"
-                                    : "bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"
-                            }`}
-                            title="AI confidence score indicating content quality"
-                        >
-                            <span className="font-normal">AI</span>{" "}
-                            <span className="font-semibold">{Math.round(localAi.meta.confidence * 100)}%</span>
-                        </span>
                     )}
                     {onRegenerate && (
                         <button
@@ -410,5 +394,92 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
                 />
             </td>
         </tr>
+    );
+}
+
+// Inline posting time editor component
+interface PostingTimeEditorProps {
+    platform: "instagram" | "facebook";
+    time: string;
+    source?: "auto" | "manual";
+    postDocId: string;
+    workspaceId: string | null;
+    onSaving: (saving: boolean) => void;
+}
+
+function PostingTimeEditor({ platform, time, source, postDocId, workspaceId, onSaving }: PostingTimeEditorProps) {
+    const [isEditing, setIsEditing] = useState(false);
+    const [localTime, setLocalTime] = useState(time);
+
+    const platformLabel = platform === "instagram" ? "IG" : "FB";
+    const platformColor = platform === "instagram"
+        ? "text-pink-600 dark:text-pink-400"
+        : "text-blue-600 dark:text-blue-400";
+
+    const handleSave = async () => {
+        if (!workspaceId || localTime === time) {
+            setIsEditing(false);
+            return;
+        }
+
+        onSaving(true);
+        try {
+            const docRef = doc(db, "workspaces", workspaceId, "post_days", postDocId);
+            const fieldName = platform === "instagram" ? "postingTimeIg" : "postingTimeFb";
+            const sourceFieldName = platform === "instagram" ? "postingTimeIgSource" : "postingTimeFbSource";
+
+            await updateDoc(docRef, {
+                [fieldName]: localTime,
+                [sourceFieldName]: "manual",
+                updatedAt: serverTimestamp(),
+            });
+        } catch (err) {
+            console.error("Time update error:", err);
+        } finally {
+            onSaving(false);
+            setIsEditing(false);
+        }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === "Enter") {
+            handleSave();
+        } else if (e.key === "Escape") {
+            setLocalTime(time);
+            setIsEditing(false);
+        }
+    };
+
+    if (isEditing) {
+        return (
+            <div className="flex items-center gap-1">
+                <span className={`text-[10px] font-semibold ${platformColor}`}>{platformLabel}</span>
+                <input
+                    type="time"
+                    value={localTime}
+                    onChange={(e) => setLocalTime(e.target.value)}
+                    onBlur={handleSave}
+                    onKeyDown={handleKeyDown}
+                    autoFocus
+                    className="text-[11px] px-1 py-0.5 border border-[var(--input-border)] rounded bg-[var(--input-bg)] text-[var(--text-primary)] focus:ring-1 focus:ring-[var(--input-focus-ring)] w-20"
+                />
+            </div>
+        );
+    }
+
+    return (
+        <button
+            onClick={() => setIsEditing(true)}
+            className="flex items-center gap-1 text-left hover:bg-[var(--bg-tertiary)] rounded px-1 py-0.5 -mx-1 transition-colors group"
+            title={`Click to edit ${platform} posting time${source === "manual" ? " (manually set)" : ""}`}
+        >
+            <span className={`text-[10px] font-semibold ${platformColor}`}>{platformLabel}</span>
+            <span className="text-[11px] text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]">
+                {formatTimeForDisplay(time)}
+            </span>
+            {source === "manual" && (
+                <span className="text-[8px] text-[var(--text-muted)]">(edited)</span>
+            )}
+        </button>
     );
 }

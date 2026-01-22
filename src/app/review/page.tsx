@@ -14,7 +14,8 @@ import PlatformFilter from "@/components/ui/PlatformFilter";
 import BufferExportModal from "@/components/BufferExportModal";
 import PostsPdfPrintRoot from "@/components/PostsPdfPrintRoot";
 import { PostDay, getPostDocId } from "@/lib/types";
-import { Play, Download, FileText, Loader2 } from "lucide-react";
+import { Play, Download, FileText, Loader2, Trash2 } from "lucide-react";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useHidePastUnsent } from "@/hooks/useHidePastUnsent";
 import { useWorkspaceUiSettings } from "@/hooks/useWorkspaceUiSettings";
 import { isPastOrTodayInDenver } from "@/lib/utils";
@@ -48,6 +49,10 @@ export default function ReviewPage() {
     const [postsPdfError, setPostsPdfError] = useState<string | null>(null);
     const [postsPdfWarning, setPostsPdfWarning] = useState<string | null>(null);
     const [pdfIncludeImages, setPdfIncludeImages] = useState(true);
+
+    // Bulk delete state
+    const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+    const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
     // Use shared hook for filtering past unsent posts
     const { filteredPosts, hidePastUnsent } = useHidePastUnsent(posts);
@@ -218,6 +223,35 @@ export default function ReviewPage() {
             showToast('error', `Failed to delete post for ${dateId}`);
         }
     }, [workspaceId, showToast]);
+
+    const handleBulkDelete = useCallback(async () => {
+        if (!workspaceId || selectedIds.size === 0) return;
+
+        setIsBulkDeleting(true);
+        let deleted = 0;
+        let failed = 0;
+
+        for (const dateId of selectedIds) {
+            try {
+                const docRef = doc(db, "workspaces", workspaceId, "post_days", dateId);
+                await deleteDoc(docRef);
+                deleted++;
+            } catch (err) {
+                console.error(`Delete error for ${dateId}:`, err);
+                failed++;
+            }
+        }
+
+        setSelectedIds(new Set());
+        setShowBulkDeleteModal(false);
+        setIsBulkDeleting(false);
+
+        if (failed > 0) {
+            showToast('warn', `Deleted ${deleted} posts, ${failed} failed.`);
+        } else {
+            showToast('success', `Deleted ${deleted} post${deleted !== 1 ? 's' : ''}.`);
+        }
+    }, [workspaceId, selectedIds, showToast]);
 
     const handleGenerateBatch = async () => {
         if (!user || !workspaceId) return;
@@ -459,6 +493,16 @@ export default function ReviewPage() {
                             <Download size={16} />
                             Export for Buffer
                         </button>
+
+                        {selectedIds.size > 0 && (
+                            <button
+                                onClick={() => setShowBulkDeleteModal(true)}
+                                className="inline-flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+                            >
+                                <Trash2 size={16} />
+                                Delete ({selectedIds.size})
+                            </button>
+                        )}
                     </>
                 }
             />
@@ -588,6 +632,18 @@ export default function ReviewPage() {
                     onProgress={handlePostsPdfProgress}
                 />
             )}
+
+            {/* Bulk Delete Confirmation Modal */}
+            <ConfirmModal
+                open={showBulkDeleteModal}
+                title="Delete Selected Posts?"
+                description={`Are you sure you want to delete ${selectedIds.size} post${selectedIds.size !== 1 ? 's' : ''}? This action cannot be undone.`}
+                confirmText={isBulkDeleting ? "Deleting..." : "Delete"}
+                cancelText="Cancel"
+                onConfirm={handleBulkDelete}
+                onCancel={() => setShowBulkDeleteModal(false)}
+                confirmVariant="danger"
+            />
         </div>
     );
 }

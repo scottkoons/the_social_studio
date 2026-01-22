@@ -4,12 +4,12 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { db, storage } from "@/lib/firebase";
-import { collection, query, where, onSnapshot, documentId, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, documentId, doc, getDoc, deleteDoc } from "firebase/firestore";
 import { ref, getDownloadURL } from "firebase/storage";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCard from "@/components/ui/DashboardCard";
 import ConfirmModal from "@/components/ui/ConfirmModal";
-import { ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Loader2, Trash2 } from "lucide-react";
 import { format, startOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, isSameMonth } from "date-fns";
 import { PostDay, getPostDocId } from "@/lib/types";
 import { getTodayInDenver, formatDisplayDate } from "@/lib/utils";
@@ -64,6 +64,11 @@ export default function CalendarPage() {
     const [pdfIncludeImages, setPdfIncludeImages] = useState(true);
     const [pdfError, setPdfError] = useState<string | null>(null);
     const [pdfWarning, setPdfWarning] = useState<string | null>(null);
+
+    // Selection and bulk delete state
+    const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
+    const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+    const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
 
     // Calculate the 6-week grid bounds
@@ -310,6 +315,46 @@ export default function CalendarPage() {
         });
     }, []);
 
+    // Selection handlers
+    const handleSelectPost = useCallback((docId: string, selected: boolean) => {
+        setSelectedPostIds(prev => {
+            const next = new Set(prev);
+            if (selected) {
+                next.add(docId);
+            } else {
+                next.delete(docId);
+            }
+            return next;
+        });
+    }, []);
+
+    const handleClearSelection = useCallback(() => {
+        setSelectedPostIds(new Set());
+    }, []);
+
+    // Bulk delete handler
+    const handleBulkDelete = useCallback(async () => {
+        if (!workspaceId || selectedPostIds.size === 0) return;
+
+        setIsBulkDeleting(true);
+        let deleted = 0;
+        let failed = 0;
+
+        for (const docId of selectedPostIds) {
+            try {
+                const docRef = doc(db, "workspaces", workspaceId, "post_days", docId);
+                await deleteDoc(docRef);
+                deleted++;
+            } catch (err) {
+                console.error(`Delete error for ${docId}:`, err);
+                failed++;
+            }
+        }
+
+        setSelectedPostIds(new Set());
+        setShowBulkDeleteModal(false);
+        setIsBulkDeleting(false);
+    }, [workspaceId, selectedPostIds]);
 
     // Generate the grid of days (6 weeks)
     const generateCalendarDays = () => {
@@ -375,6 +420,24 @@ export default function CalendarPage() {
                         </button>
                     </div>
                     <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+                        {/* Bulk Delete Button */}
+                        {selectedPostIds.size > 0 && (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setShowBulkDeleteModal(true)}
+                                    className="flex items-center gap-1.5 px-2 md:px-3 py-1.5 text-xs md:text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
+                                >
+                                    <Trash2 size={14} />
+                                    Delete ({selectedPostIds.size})
+                                </button>
+                                <button
+                                    onClick={handleClearSelection}
+                                    className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                                >
+                                    Clear
+                                </button>
+                            </div>
+                        )}
                         {/* PDF Export Controls */}
                         <div className="flex items-center gap-2">
                             <label className="hidden md:flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
@@ -497,6 +560,8 @@ export default function CalendarPage() {
                                         onDragOver={handleDragOver}
                                         onDragLeave={handleDragLeave}
                                         onDrop={handleDrop}
+                                        selectedPostIds={selectedPostIds}
+                                        onSelectPost={handleSelectPost}
                                     />
                                 );
                             })}
@@ -540,6 +605,18 @@ export default function CalendarPage() {
                 />
             )}
 
+            {/* Bulk Delete Confirmation Modal */}
+            <ConfirmModal
+                open={showBulkDeleteModal}
+                title="Delete Selected Posts?"
+                description={`Are you sure you want to delete ${selectedPostIds.size} post${selectedPostIds.size !== 1 ? 's' : ''}? This action cannot be undone.`}
+                confirmText={isBulkDeleting ? "Deleting..." : "Delete"}
+                cancelText="Cancel"
+                onConfirm={handleBulkDelete}
+                onCancel={() => setShowBulkDeleteModal(false)}
+                confirmVariant="danger"
+            />
+
         </div>
     );
 }
@@ -560,6 +637,8 @@ interface DayCellProps {
     onDragOver: (e: React.DragEvent, dateStr: string) => void;
     onDragLeave: () => void;
     onDrop: (e: React.DragEvent, dateStr: string) => void;
+    selectedPostIds: Set<string>;
+    onSelectPost: (docId: string, selected: boolean) => void;
 }
 
 function DayCell({
@@ -578,9 +657,13 @@ function DayCell({
     onDragOver,
     onDragLeave,
     onDrop,
+    selectedPostIds,
+    onSelectPost,
 }: DayCellProps) {
     const hasPosts = posts.length > 0;
     const firstPost = posts[0];
+    const docId = firstPost ? getPostDocId(firstPost) : null;
+    const isSelected = docId ? selectedPostIds.has(docId) : false;
 
     // Check if any post would be skipped (past date or missing image)
     const hasSkippedPost = posts.some(p => {
@@ -608,6 +691,7 @@ function DayCell({
             className={`
                 relative min-h-[80px] md:min-h-[100px] p-1.5 border-b border-r border-[var(--border-secondary)]
                 text-left transition-all cursor-pointer group
+                ${isSelected ? 'ring-2 ring-[var(--accent-primary)] ring-inset bg-[var(--accent-bg)]' : ''}
                 ${isCurrentMonth ? 'bg-[var(--bg-card)]' : 'bg-[var(--bg-tertiary)]/50'}
                 ${hasSkippedPost ? 'bg-yellow-50/30 dark:bg-yellow-900/10' : ''}
                 ${!isPast && isCurrentMonth ? 'hover:bg-[var(--bg-tertiary)]' : ''}
@@ -628,6 +712,19 @@ function DayCell({
                 `}>
                     {format(day, "d")}
                 </span>
+                {/* Checkbox for selection */}
+                {hasPosts && docId && (
+                    <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                            e.stopPropagation();
+                            onSelectPost(docId, e.target.checked);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-4 w-4 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-offset-0 cursor-pointer bg-[var(--input-bg)] opacity-0 group-hover:opacity-100 checked:opacity-100 transition-opacity"
+                    />
+                )}
             </div>
 
             {/* Post content - show first post's thumbnail and status */}

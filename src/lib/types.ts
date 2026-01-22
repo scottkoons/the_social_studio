@@ -28,8 +28,12 @@ export interface PostDay {
     starterText?: string;
     imageAssetId?: string;
     imageUrl?: string; // Direct download URL (set by importImageFromUrl)
-    postingTime?: string; // "HH:MM" 24-hour, Denver local time
-    postingTimeSource?: "auto" | "manual"; // How the posting time was set
+    postingTime?: string; // "HH:MM" 24-hour, Denver local time (legacy, single time)
+    postingTimeSource?: "auto" | "manual"; // How the posting time was set (legacy)
+    postingTimeIg?: string; // Instagram posting time "HH:MM" 24-hour, Denver local time
+    postingTimeFb?: string; // Facebook posting time "HH:MM" 24-hour, Denver local time
+    postingTimeIgSource?: "auto" | "manual"; // How the IG posting time was set
+    postingTimeFbSource?: "auto" | "manual"; // How the FB posting time was set
     status: "input" | "generated" | "edited" | "sent" | "error";
     ai?: PostDayAI;
     buffer?: {

@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useRef } from "react";
 import { db } from "@/lib/firebase";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { isPastOrTodayInDenver, formatDisplayDate } from "@/lib/utils";
 import { movePostDay } from "@/lib/postDayMove";
 import { PostDay, getPostDocId } from "@/lib/types";
 import ImageUpload from "./ImageUpload";
 import StatusPill from "./ui/StatusPill";
 import ConfirmModal from "./ui/ConfirmModal";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle, Loader2, Trash2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 interface TableRowProps {
@@ -35,6 +35,10 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
     // Overwrite confirmation modal state
     const [showOverwriteModal, setShowOverwriteModal] = useState(false);
     const [pendingNewDate, setPendingNewDate] = useState<string | null>(null);
+
+    // Delete confirmation modal state
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const isPast = isPastOrTodayInDenver(post.date);
 
@@ -120,12 +124,27 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
         setPendingNewDate(null);
     };
 
+    const handleDelete = async () => {
+        if (!workspaceId) return;
+        setIsDeleting(true);
+        try {
+            const docRef = doc(db, "workspaces", workspaceId, "post_days", docId);
+            await deleteDoc(docRef);
+        } catch (err) {
+            console.error("Delete error:", err);
+            setError("Failed to delete post.");
+        } finally {
+            setIsDeleting(false);
+            setShowDeleteModal(false);
+        }
+    };
+
     return (
         <>
         <tr
             ref={rowRef}
             className={`
-                transition-colors
+                transition-colors group
                 ${isSelected ? 'bg-[var(--table-row-selected)]' : 'hover:bg-[var(--table-row-hover)]'}
                 ${isHighlighted ? 'ring-2 ring-[var(--accent-primary)] ring-inset bg-[var(--accent-bg)]' : ''}
             `}
@@ -188,13 +207,22 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
                 />
             </td>
 
-            {/* Status */}
+            {/* Status & Actions */}
             <td className="px-2 md:px-4 py-3 md:py-4 align-top text-right">
-                <div className="flex items-center justify-end">
-                    {isSaving ? (
+                <div className="flex items-center justify-end gap-2">
+                    {isSaving || isDeleting ? (
                         <Loader2 className="animate-spin text-[var(--accent-primary)]" size={16} />
                     ) : (
-                        <StatusPill status={post.status} />
+                        <>
+                            <StatusPill status={post.status} />
+                            <button
+                                onClick={() => setShowDeleteModal(true)}
+                                className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--status-error)] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                title="Delete post"
+                            >
+                                <Trash2 size={14} />
+                            </button>
+                        </>
                     )}
                 </div>
             </td>
@@ -209,6 +237,18 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
             cancelText="Cancel"
             onConfirm={handleOverwriteConfirm}
             onCancel={handleOverwriteCancel}
+        />
+
+        {/* Delete Confirmation Modal */}
+        <ConfirmModal
+            open={showDeleteModal}
+            title="Delete Post?"
+            description={`Are you sure you want to delete the post for ${formatDisplayDate(post.date)}? This action cannot be undone.`}
+            confirmText={isDeleting ? "Deleting..." : "Delete"}
+            cancelText="Cancel"
+            onConfirm={handleDelete}
+            onCancel={() => setShowDeleteModal(false)}
+            confirmVariant="danger"
         />
         </>
     );

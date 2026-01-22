@@ -9,6 +9,7 @@ import DashboardCard from "@/components/ui/DashboardCard";
 import CSVImport from "@/components/CSVImport";
 import { Calendar, Clock, CheckCircle, AlertCircle, Edit3, Send, Image as ImageIcon } from "lucide-react";
 import { getTodayInDenver, formatDisplayDate } from "@/lib/utils";
+import { formatTimeForDisplay } from "@/lib/postingTime";
 import { PostDay } from "@/lib/types";
 import { format, parseISO, differenceInDays, startOfWeek, endOfWeek, addWeeks } from "date-fns";
 
@@ -181,39 +182,85 @@ export default function PlanningPage() {
                         </div>
                     )}
 
-                    {/* Next Post */}
+                    {/* Next Posts by Platform */}
                     {nextPost && (
-                        <DashboardCard className="mb-6">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <Clock className="text-[var(--accent-primary)]" size={16} />
-                                        <span className="text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">Next Post</span>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            {/* Instagram Next Post */}
+                            <DashboardCard>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <Clock className="text-pink-500" size={16} />
+                                            <span className="text-xs font-medium text-pink-600 dark:text-pink-400 uppercase tracking-wider">Next Instagram</span>
+                                        </div>
+                                        <p className="text-lg font-semibold text-[var(--text-primary)]">
+                                            {formatDisplayDate(nextPost.date)}
+                                        </p>
+                                        <p className="text-sm text-[var(--text-secondary)]">
+                                            {nextPost.postingTimeIg
+                                                ? formatTimeForDisplay(nextPost.postingTimeIg)
+                                                : nextPost.postingTime
+                                                    ? formatTimeForDisplay(nextPost.postingTime)
+                                                    : "time not set"
+                                            }
+                                        </p>
                                     </div>
-                                    <p className="text-lg font-semibold text-[var(--text-primary)]">
-                                        {formatDisplayDate(nextPost.date)}
-                                    </p>
-                                    <p className="text-sm text-[var(--text-secondary)]">
-                                        {nextPost.postingTime ? `at ${nextPost.postingTime}` : "time not set"}
-                                    </p>
+                                    <div className="text-right">
+                                        {daysUntilNext === 0 ? (
+                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                                                Today
+                                            </span>
+                                        ) : daysUntilNext === 1 ? (
+                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400">
+                                                Tomorrow
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)]">
+                                                In {daysUntilNext} days
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="text-right">
-                                    {daysUntilNext === 0 ? (
-                                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
-                                            Today
-                                        </span>
-                                    ) : daysUntilNext === 1 ? (
-                                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
-                                            Tomorrow
-                                        </span>
-                                    ) : (
-                                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)]">
-                                            In {daysUntilNext} days
-                                        </span>
-                                    )}
+                            </DashboardCard>
+
+                            {/* Facebook Next Post */}
+                            <DashboardCard>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <Clock className="text-blue-500" size={16} />
+                                            <span className="text-xs font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wider">Next Facebook</span>
+                                        </div>
+                                        <p className="text-lg font-semibold text-[var(--text-primary)]">
+                                            {formatDisplayDate(nextPost.date)}
+                                        </p>
+                                        <p className="text-sm text-[var(--text-secondary)]">
+                                            {nextPost.postingTimeFb
+                                                ? formatTimeForDisplay(nextPost.postingTimeFb)
+                                                : nextPost.postingTime
+                                                    ? formatTimeForDisplay(nextPost.postingTime)
+                                                    : "time not set"
+                                            }
+                                        </p>
+                                    </div>
+                                    <div className="text-right">
+                                        {daysUntilNext === 0 ? (
+                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                                                Today
+                                            </span>
+                                        ) : daysUntilNext === 1 ? (
+                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                                                Tomorrow
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)]">
+                                                In {daysUntilNext} days
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        </DashboardCard>
+                            </DashboardCard>
+                        </div>
                     )}
 
                     {/* Weekly Overview */}

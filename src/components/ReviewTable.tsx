@@ -65,7 +65,7 @@ export default function ReviewTable({
             <table className="w-full text-sm min-w-[500px] md:min-w-0">
                 <thead>
                     <tr className="bg-[var(--table-header-bg)] border-b border-[var(--border-primary)]">
-                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-3 md:px-4 py-3 w-10 md:w-12 z-10">
+                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 md:px-3 py-3 w-8 md:w-10 z-10">
                             <input
                                 type="checkbox"
                                 checked={allSelected}
@@ -76,11 +76,8 @@ export default function ReviewTable({
                                 className="h-5 w-5 md:h-4 md:w-4 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] focus:ring-offset-0 cursor-pointer bg-[var(--input-bg)]"
                             />
                         </th>
-                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 md:px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10">
-                            Platform
-                        </th>
                         <th
-                            className="sticky top-0 bg-[var(--table-header-bg)] px-2 md:px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:text-[var(--accent-primary)] transition-colors z-10"
+                            className="sticky top-0 bg-[var(--table-header-bg)] px-2 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider cursor-pointer hover:text-[var(--accent-primary)] transition-colors z-10 w-24 md:w-28"
                             onClick={toggleSort}
                         >
                             <div className="flex items-center gap-1">
@@ -88,21 +85,21 @@ export default function ReviewTable({
                                 {sortDir === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                             </div>
                         </th>
-                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 md:px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10">
+                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10 w-28 md:w-32">
                             Image
                         </th>
-                        {/* Content columns hidden on mobile */}
+                        {/* Content columns - take remaining space */}
                         {showInstagram && (
-                            <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 md:px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10 hidden lg:table-cell">
+                            <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 md:px-3 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10 hidden lg:table-cell">
                                 Instagram
                             </th>
                         )}
                         {showFacebook && (
-                            <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 md:px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10 hidden lg:table-cell">
+                            <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 md:px-3 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10 hidden lg:table-cell">
                                 Facebook
                             </th>
                         )}
-                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 md:px-4 py-3 text-right text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10">
+                        <th className="sticky top-0 bg-[var(--table-header-bg)] px-2 py-3 text-right text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider z-10 w-20 md:w-24">
                             Status
                         </th>
                     </tr>

@@ -14,7 +14,7 @@ import { format, addDays } from "date-fns";
 import { PostDay, getPostDocId } from "@/lib/types";
 import { getTodayInDenver } from "@/lib/utils";
 import { useHidePastUnsent } from "@/hooks/useHidePastUnsent";
-import { randomTimeInWindow5Min } from "@/lib/postingTime";
+import { generatePlatformPostingTimes } from "@/lib/postingTime";
 
 export default function InputPage() {
     const { user, workspaceId, workspaceLoading } = useAuth();
@@ -123,12 +123,14 @@ export default function InputPage() {
         try {
             // Create ONE document per date (posts to both FB & IG)
             const docRef = doc(db, "workspaces", workspaceId, "post_days", dateStr);
-            const postingTime = randomTimeInWindow5Min(dateStr, dateStr);
+            const postingTimes = generatePlatformPostingTimes(dateStr, dateStr);
             await setDoc(docRef, {
                 date: dateStr,
                 starterText: "",
-                postingTime,
-                postingTimeSource: "auto",
+                postingTimeIg: postingTimes.ig,
+                postingTimeFb: postingTimes.fb,
+                postingTimeIgSource: "auto",
+                postingTimeFbSource: "auto",
                 status: "input",
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
