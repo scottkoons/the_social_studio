@@ -14,7 +14,10 @@ import {
     ROW_COLOR_WHITE,
     ROW_COLOR_CREAM,
     formatDateTimeForTable,
+    CONTENT_WIDTH_PX,
 } from "@/lib/postsPdfExport";
+import { formatTimeForDisplay, randomTimeInWindow5Min } from "@/lib/postingTime";
+import { format, parseISO } from "date-fns";
 
 interface PostsPdfRowProps {
     post: PostDay;
@@ -24,18 +27,147 @@ interface PostsPdfRowProps {
 }
 
 /**
+ * Formats time for display (handles undefined)
+ */
+function getTimeDisplay(time: string | undefined, fallbackDate: string): string {
+    return formatTimeForDisplay(time || randomTimeInWindow5Min(fallbackDate, fallbackDate));
+}
+
+/**
  * Table row for Posts PDF export.
- * Columns: Date/Time | Image | Instagram Post | Facebook Post
+ * Two modes:
+ * - With images: Date/Time | Image | Instagram Post | Facebook Post
+ * - Without images (compact): Date/Time | Post Content (FB row, then IG row)
  */
 const PostsPdfRow = forwardRef<HTMLDivElement, PostsPdfRowProps>(
     function PostsPdfRow({ post, rowIndex, imageDataUrl, includeImages }, ref) {
         const hasImage = !!post.imageAssetId;
         const bgColor = rowIndex % 2 === 0 ? ROW_COLOR_WHITE : ROW_COLOR_CREAM;
 
-        // Get captions (no hashtags)
+        // Get captions and hashtags
         const igCaption = post.ai?.ig?.caption || "";
         const fbCaption = post.ai?.fb?.caption || "";
+        const igHashtags = post.ai?.ig?.hashtags || [];
+        const fbHashtags = post.ai?.fb?.hashtags || [];
 
+        // Combine caption with hashtags
+        const igFullText = igCaption + (igHashtags.length > 0 ? "\n\n" + igHashtags.join(" ") : "");
+        const fbFullText = fbCaption + (fbHashtags.length > 0 ? "\n\n" + fbHashtags.join(" ") : "");
+
+        // COMPACT MODE (no images): 2 columns, 2 rows per post
+        if (!includeImages) {
+            const dateStr = format(parseISO(post.date), "M/dd/yy");
+            const fbTime = getTimeDisplay(post.postingTimeFb || post.postingTime, post.date);
+            const igTime = getTimeDisplay(post.postingTimeIg || post.postingTime, post.date);
+            const compactRowHeight = Math.floor(ROW_HEIGHT_PX / 2);
+
+            return (
+                <div ref={ref} style={{ width: "100%" }}>
+                    {/* FB Row */}
+                    <div
+                        style={{
+                            display: "flex",
+                            width: "100%",
+                            minHeight: `${compactRowHeight}px`,
+                            backgroundColor: bgColor,
+                            borderBottom: "1px solid #f3f4f6",
+                            fontFamily: "system-ui, -apple-system, sans-serif",
+                            boxSizing: "border-box",
+                        }}
+                    >
+                        {/* Date + FB Time */}
+                        <div
+                            style={{
+                                width: "80px",
+                                flexShrink: 0,
+                                padding: "4px 6px",
+                                borderRight: "1px solid #e5e7eb",
+                                boxSizing: "border-box",
+                            }}
+                        >
+                            <div style={{ fontSize: "9px", fontWeight: 600, color: "#374151" }}>{dateStr}</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "4px", marginTop: "2px" }}>
+                                <span style={{ fontSize: "8px", fontWeight: 600, color: "#3b5998" }}>FB</span>
+                                <span style={{ fontSize: "8px", color: "#6b7280" }}>{fbTime}</span>
+                            </div>
+                        </div>
+                        {/* FB Post Content */}
+                        <div
+                            style={{
+                                flex: 1,
+                                padding: "4px 8px",
+                                boxSizing: "border-box",
+                                overflow: "hidden",
+                            }}
+                        >
+                            <div
+                                style={{
+                                    fontSize: `${FONT_SIZE_PT}px`,
+                                    color: "#374151",
+                                    lineHeight: LINE_HEIGHT,
+                                    wordBreak: "break-word",
+                                    whiteSpace: "pre-wrap",
+                                }}
+                            >
+                                {fbFullText || <span style={{ color: "#9ca3af", fontStyle: "italic" }}>(No text)</span>}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* IG Row */}
+                    <div
+                        style={{
+                            display: "flex",
+                            width: "100%",
+                            minHeight: `${compactRowHeight}px`,
+                            backgroundColor: bgColor,
+                            borderBottom: "1px solid #e5e7eb",
+                            fontFamily: "system-ui, -apple-system, sans-serif",
+                            boxSizing: "border-box",
+                        }}
+                    >
+                        {/* IG Time (no date repeat) */}
+                        <div
+                            style={{
+                                width: "80px",
+                                flexShrink: 0,
+                                padding: "4px 6px",
+                                borderRight: "1px solid #e5e7eb",
+                                boxSizing: "border-box",
+                            }}
+                        >
+                            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                <span style={{ fontSize: "8px", fontWeight: 600, color: "#E1306C" }}>IG</span>
+                                <span style={{ fontSize: "8px", color: "#6b7280" }}>{igTime}</span>
+                            </div>
+                        </div>
+                        {/* IG Post Content */}
+                        <div
+                            style={{
+                                flex: 1,
+                                padding: "4px 8px",
+                                boxSizing: "border-box",
+                                overflow: "hidden",
+                            }}
+                        >
+                            <div
+                                style={{
+                                    fontSize: `${FONT_SIZE_PT}px`,
+                                    color: "#374151",
+                                    lineHeight: LINE_HEIGHT,
+                                    wordBreak: "break-word",
+                                    whiteSpace: "pre-wrap",
+                                }}
+                            >
+                                {igFullText || <span style={{ color: "#9ca3af", fontStyle: "italic" }}>(No text)</span>}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // FULL MODE (with images): 4 columns
         const dateTimeStr = formatDateTimeForTable(post);
 
         return (
@@ -98,7 +230,7 @@ const PostsPdfRow = forwardRef<HTMLDivElement, PostsPdfRowProps>(
                             backgroundColor: "#f3f4f6",
                         }}
                     >
-                        {includeImages && imageDataUrl ? (
+                        {imageDataUrl ? (
                             <img
                                 src={imageDataUrl}
                                 alt=""
