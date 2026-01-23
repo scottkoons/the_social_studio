@@ -1006,7 +1006,38 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
     const starterText = postData.starterText;
     const hasStarterText = !!starterText && starterText.trim().length > 0;
     const hasImage = !!postData.imageAssetId;
-    const imageUrl = postData.imageUrl || postData.downloadUrl; // Direct download URL if available
+
+    // Get image URL - either from post data or by fetching from asset/storage
+    let imageUrl = postData.imageUrl || postData.downloadUrl;
+
+    if (!imageUrl && hasImage && postData.imageAssetId) {
+      // Fetch the asset document to get the storage path or download URL
+      const assetRef = db
+        .collection("workspaces")
+        .doc(workspaceId)
+        .collection("assets")
+        .doc(postData.imageAssetId);
+
+      const assetDoc = await assetRef.get();
+      if (assetDoc.exists) {
+        const assetData = assetDoc.data()!;
+        // Check for pre-computed download URL first
+        if (assetData.downloadUrl) {
+          imageUrl = assetData.downloadUrl;
+        } else if (assetData.storagePath) {
+          // Generate a signed URL from Firebase Storage
+          const bucket = storage.bucket();
+          const file = bucket.file(assetData.storagePath);
+          const [signedUrl] = await file.getSignedUrl({
+            action: "read",
+            expires: Date.now() + 15 * 60 * 1000, // 15 minutes
+          });
+          imageUrl = signedUrl;
+        }
+      }
+    }
+
+    console.info(`[ImageUrl] hasImage=${hasImage}, imageUrl=${imageUrl ? "present" : "missing"}`);
 
     // For regeneration, get previous outputs from request or current post data
     let prevOutputs: PreviousOutputs | undefined;

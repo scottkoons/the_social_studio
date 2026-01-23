@@ -54,6 +54,11 @@ export default function ReviewPage() {
     const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
     const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
+    // Image-only generation confirmation state
+    const [showImageOnlyModal, setShowImageOnlyModal] = useState(false);
+    const [imageOnlyCount, setImageOnlyCount] = useState(0);
+    const [pendingGenerateTargets, setPendingGenerateTargets] = useState<PostDay[]>([]);
+
     // Use shared hook for filtering past unsent posts
     const { filteredPosts, hidePastUnsent } = useHidePastUnsent(posts);
 
@@ -253,14 +258,33 @@ export default function ReviewPage() {
         }
     }, [workspaceId, selectedIds, showToast]);
 
-    const handleGenerateBatch = async () => {
+    const handleGenerateClick = () => {
+        handleGenerateBatch();
+    };
+
+    const handleGenerateBatch = async (confirmedTargets?: PostDay[]) => {
         if (!user || !workspaceId) return;
 
-        const targets = selectedIds.size > 0
+        const targets = confirmedTargets || (selectedIds.size > 0
             ? filteredPosts.filter(p => selectedIds.has(getPostDocId(p)))
-            : filteredPosts;
+            : filteredPosts);
 
         if (targets.length === 0) return;
+
+        // Check for image-only posts (have image but no starter text)
+        // Only show confirmation if this is not already a confirmed call
+        if (!confirmedTargets) {
+            const imageOnlyPosts = targets.filter(p =>
+                p.imageAssetId && (!p.starterText || p.starterText.trim() === "")
+            );
+
+            if (imageOnlyPosts.length > 0) {
+                setImageOnlyCount(imageOnlyPosts.length);
+                setPendingGenerateTargets(targets);
+                setShowImageOnlyModal(true);
+                return;
+            }
+        }
 
         setIsGenerating(true);
 
@@ -457,7 +481,7 @@ export default function ReviewPage() {
                 actions={
                     <>
                         <button
-                            onClick={handleGenerateBatch}
+                            onClick={handleGenerateClick}
                             disabled={isGenerating}
                             className="inline-flex items-center gap-2 bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
@@ -632,6 +656,23 @@ export default function ReviewPage() {
                 onConfirm={handleBulkDelete}
                 onCancel={() => setShowBulkDeleteModal(false)}
                 confirmVariant="danger"
+            />
+
+            {/* Image-Only Generation Confirmation Modal */}
+            <ConfirmModal
+                open={showImageOnlyModal}
+                title="Generate from Images?"
+                description={`${imageOnlyCount} post${imageOnlyCount !== 1 ? 's have' : ' has'} no description text but ${imageOnlyCount !== 1 ? 'have images' : 'has an image'}. The AI will analyze the image${imageOnlyCount !== 1 ? 's' : ''} to generate post content. This uses vision AI and may take longer.`}
+                confirmText="Yes, Analyze Images"
+                cancelText="Cancel"
+                onConfirm={() => {
+                    setShowImageOnlyModal(false);
+                    handleGenerateBatch(pendingGenerateTargets);
+                }}
+                onCancel={() => {
+                    setShowImageOnlyModal(false);
+                    setPendingGenerateTargets([]);
+                }}
             />
         </div>
     );
