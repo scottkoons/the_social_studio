@@ -4,6 +4,7 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { createHash, randomUUID } from "crypto";
 import OpenAI from "openai";
+import sharp from "sharp";
 
 initializeApp();
 
@@ -11,6 +12,9 @@ const db = getFirestore();
 const storage = getStorage();
 
 const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+const MAX_DIMENSION = 1920; // Max width or height for optimization
+const WEBP_QUALITY = 85; // WebP quality (0-100)
+
 const ALLOWED_CONTENT_TYPES = [
   "image/jpeg",
   "image/png",
@@ -18,12 +22,40 @@ const ALLOWED_CONTENT_TYPES = [
   "image/gif",
 ];
 
-const CONTENT_TYPE_TO_EXT: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "image/gif": "gif",
-};
+/**
+ * Optimizes an image buffer: resizes if needed and converts to WebP
+ */
+async function optimizeImageBuffer(
+  buffer: Buffer
+): Promise<{ buffer: Buffer; width: number; height: number }> {
+  // Get image metadata
+  const metadata = await sharp(buffer).metadata();
+  const { width = 0, height = 0 } = metadata;
+
+  let pipeline = sharp(buffer);
+
+  // Resize if either dimension exceeds max
+  if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+    pipeline = pipeline.resize(MAX_DIMENSION, MAX_DIMENSION, {
+      fit: "inside",
+      withoutEnlargement: true,
+    });
+  }
+
+  // Convert to WebP
+  const optimizedBuffer = await pipeline
+    .webp({ quality: WEBP_QUALITY })
+    .toBuffer();
+
+  // Get final dimensions
+  const finalMetadata = await sharp(optimizedBuffer).metadata();
+
+  return {
+    buffer: optimizedBuffer,
+    width: finalMetadata.width || width,
+    height: finalMetadata.height || height,
+  };
+}
 
 // ============================================================================
 // Import Image Function
@@ -198,28 +230,49 @@ export const importImageFromUrl = onCall<ImportImageRequest>(
       };
     }
 
+    // Optimize image: resize if needed and convert to WebP
+    let optimizedBuffer: Buffer;
+    let imageWidth: number;
+    let imageHeight: number;
+
+    try {
+      const optimized = await optimizeImageBuffer(buffer);
+      optimizedBuffer = optimized.buffer;
+      imageWidth = optimized.width;
+      imageHeight = optimized.height;
+    } catch (error) {
+      return {
+        success: false,
+        skipped: true,
+        reason: `Failed to optimize image: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
+
     const hash = createHash("sha256")
       .update(imageUrl + Date.now().toString())
       .digest("hex")
       .substring(0, 16);
 
     const downloadToken = randomUUID();
-    const ext = CONTENT_TYPE_TO_EXT[contentType] || "jpg";
-    const fileName = `${hash}.${ext}`;
+    // Always use .webp extension since we convert to WebP
+    const fileName = `${hash}.webp`;
     const storagePath = `assets/${workspaceId}/${dateId}/${fileName}`;
 
     const bucket = storage.bucket();
     const file = bucket.file(storagePath);
 
     try {
-      await file.save(buffer, {
+      await file.save(optimizedBuffer, {
         metadata: {
-          contentType: contentType,
+          contentType: "image/webp",
           cacheControl: "public, max-age=31536000",
           metadata: {
             firebaseStorageDownloadTokens: downloadToken,
             originalUrl: imageUrl,
             uploadedBy: uid,
+            originalContentType: contentType,
+            width: String(imageWidth),
+            height: String(imageHeight),
           },
         },
       });
@@ -249,8 +302,11 @@ export const importImageFromUrl = onCall<ImportImageRequest>(
         downloadUrl: downloadUrl,
         downloadToken: downloadToken,
         originalUrl: imageUrl,
-        contentType: contentType,
-        size: buffer.length,
+        contentType: "image/webp",
+        originalContentType: contentType,
+        size: optimizedBuffer.length,
+        width: imageWidth,
+        height: imageHeight,
         fileName: fileName,
         createdAt: FieldValue.serverTimestamp(),
         createdBy: uid,

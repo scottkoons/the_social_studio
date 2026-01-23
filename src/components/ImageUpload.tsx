@@ -10,6 +10,7 @@ import { doc, setDoc, updateDoc, getDoc, serverTimestamp } from "firebase/firest
 import { Image as ImageIcon, X, Upload, Maximize2, Link, Loader2 } from "lucide-react";
 import Image from "next/image";
 import ImagePreviewModal from "./ui/ImagePreviewModal";
+import { optimizeImage, optimizeImageFromBase64 } from "@/lib/imageOptimizer";
 
 interface ImageUploadProps {
     post: PostDay;
@@ -49,20 +50,23 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
         onUploadStart();
 
         try {
-            // Storage path: assets/{workspaceId}/{YYYY-MM-DD}/{originalFilename}
-            const storagePath = `assets/${workspaceId}/${post.date}/${file.name}`;
+            // Optimize image: resize and convert to WebP
+            const optimized = await optimizeImage(file, file.name);
+
+            // Storage path: assets/{workspaceId}/{YYYY-MM-DD}/{optimizedFilename}
+            const storagePath = `assets/${workspaceId}/${post.date}/${optimized.fileName}`;
             const storageRef = ref(storage, storagePath);
 
-            await uploadBytes(storageRef, file);
+            await uploadBytes(storageRef, optimized.blob);
 
             // Create asset doc under workspace
             const assetId = crypto.randomUUID();
             const assetData = {
                 id: assetId,
                 storagePath,
-                fileName: file.name,
-                contentType: file.type,
-                size: file.size,
+                fileName: optimized.fileName,
+                contentType: "image/webp",
+                size: optimized.blob.size,
                 createdAt: serverTimestamp(),
                 workspaceId: workspaceId,
             };
@@ -116,31 +120,27 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
                 throw new Error(proxyData.error || "Failed to fetch image");
             }
 
-            // Convert base64 back to blob
-            const byteCharacters = atob(proxyData.base64);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
-            }
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], { type: proxyData.contentType });
+            // Optimize image: resize and convert to WebP
+            const optimized = await optimizeImageFromBase64(
+                proxyData.base64,
+                proxyData.contentType,
+                proxyData.fileName
+            );
 
-            const fileName = proxyData.fileName;
-
-            // Storage path: assets/{workspaceId}/{YYYY-MM-DD}/{filename}
-            const storagePath = `assets/${workspaceId}/${post.date}/${fileName}`;
+            // Storage path: assets/{workspaceId}/{YYYY-MM-DD}/{optimizedFilename}
+            const storagePath = `assets/${workspaceId}/${post.date}/${optimized.fileName}`;
             const storageRef = ref(storage, storagePath);
 
-            await uploadBytes(storageRef, blob);
+            await uploadBytes(storageRef, optimized.blob);
 
             // Create asset doc under workspace
             const assetId = crypto.randomUUID();
             const assetData = {
                 id: assetId,
                 storagePath,
-                fileName,
-                contentType: proxyData.contentType,
-                size: proxyData.size,
+                fileName: optimized.fileName,
+                contentType: "image/webp",
+                size: optimized.blob.size,
                 sourceUrl: urlValue.trim(),
                 createdAt: serverTimestamp(),
                 workspaceId: workspaceId,
