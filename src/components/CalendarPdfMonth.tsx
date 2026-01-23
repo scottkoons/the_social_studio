@@ -167,27 +167,30 @@ const CalendarPdfMonth = forwardRef<HTMLDivElement, CalendarPdfMonthProps>(
                                             </div>
                                         )}
 
-                                        {/* Status and time */}
+                                        {/* FB and IG posting times */}
                                         <div
                                             style={{
                                                 display: "flex",
-                                                alignItems: "center",
-                                                justifyContent: "space-between",
-                                                gap: "4px",
+                                                flexDirection: "column",
+                                                gap: "1px",
                                             }}
                                         >
-                                            <StatusBadge status={post.status} />
-                                            <span
-                                                style={{
-                                                    fontSize: "9px",
-                                                    color: "#9ca3af",
-                                                }}
-                                            >
-                                                {formatTimeForDisplay(
-                                                    post.postingTime ||
-                                                        randomTimeInWindow5Min(dateStr, dateStr)
-                                                )}
-                                            </span>
+                                            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                                <span style={{ fontSize: "8px", fontWeight: 600, color: "#3b5998" }}>FB</span>
+                                                <span style={{ fontSize: "8px", color: "#6b7280" }}>
+                                                    {formatTimeForDisplay(
+                                                        post.postingTimeFb || post.postingTime || randomTimeInWindow5Min(dateStr, dateStr)
+                                                    )}
+                                                </span>
+                                            </div>
+                                            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                                <span style={{ fontSize: "8px", fontWeight: 600, color: "#E1306C" }}>IG</span>
+                                                <span style={{ fontSize: "8px", color: "#6b7280" }}>
+                                                    {formatTimeForDisplay(
+                                                        post.postingTimeIg || post.postingTime || randomTimeInWindow5Min(dateStr, dateStr)
+                                                    )}
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
                                 )}
@@ -199,34 +202,5 @@ const CalendarPdfMonth = forwardRef<HTMLDivElement, CalendarPdfMonthProps>(
         );
     }
 );
-
-function StatusBadge({ status }: { status: string }) {
-    const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
-        input: { bg: "#e5e7eb", text: "#4b5563", label: "Input" },
-        generated: { bg: "#fde68a", text: "#b45309", label: "Gen" },
-        edited: { bg: "#bfdbfe", text: "#1d4ed8", label: "Edit" },
-        sent: { bg: "#bbf7d0", text: "#15803d", label: "Sent" },
-        error: { bg: "#fecaca", text: "#b91c1c", label: "Err" },
-    };
-
-    const config = statusConfig[status] || statusConfig.input;
-
-    return (
-        <span
-            style={{
-                display: "inline-flex",
-                alignItems: "center",
-                padding: "2px 6px",
-                borderRadius: "4px",
-                fontSize: "9px",
-                fontWeight: 500,
-                backgroundColor: config.bg,
-                color: config.text,
-            }}
-        >
-            {config.label}
-        </span>
-    );
-}
 
 export default CalendarPdfMonth;

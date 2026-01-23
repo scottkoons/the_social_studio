@@ -350,8 +350,9 @@ export const importImageFromUrl = onCall<ImportImageRequest>(
 // Generate Post Copy Function
 // ============================================================================
 
-const PROMPT_VERSION = "3.0.0"; // Text-only prompts (no image analysis)
-const MODEL_NAME = "gpt-4o-mini"; // Text-only model (cheaper, no vision needed)
+const PROMPT_VERSION = "4.0.0"; // Supports image analysis when no starter text
+const MODEL_NAME_TEXT = "gpt-4o-mini"; // Text-only model (cheaper)
+const MODEL_NAME_VISION = "gpt-4o"; // Vision model for image analysis
 
 // Global hashtags that are automatically appended to all generated posts
 const GLOBAL_HASHTAGS = [
@@ -759,6 +760,82 @@ confidence should be 0.0-1.0:
 - 0.0-0.49: Very limited info, set needsInfo: true`;
 }
 
+/**
+ * Builds a vision-based prompt for when there's an image but no starter text.
+ * The AI will analyze the image and generate posts based on what it sees.
+ */
+function buildVisionPrompt(
+  brandVoice: string,
+  hashtagStyle: "light" | "medium" | "heavy",
+  emojiStyle: "low" | "medium" | "high",
+  dateStr: string,
+  isRegenerate: boolean = false,
+  previousOutputs?: PreviousOutputs
+): string {
+  const hashtagCounts = {
+    light: { ig: "5-8", fb: "3-5" },
+    medium: { ig: "10-15", fb: "5-8" },
+    heavy: { ig: "15-20", fb: "8-10" },
+  };
+
+  const counts = hashtagCounts[hashtagStyle] || hashtagCounts.medium;
+
+  const emojiInstructions = {
+    low: "EMOJI RULE: Use 0 or 1 emoji MAXIMUM per caption. Keep it minimal.",
+    medium: "EMOJI RULE: You MUST use EXACTLY 2-4 emojis per caption. This is REQUIRED - no fewer than 2, no more than 4.",
+    high: "EMOJI RULE: You MUST use EXACTLY 5-8 emojis per caption. This is REQUIRED - no fewer than 5, no more than 8.",
+  };
+
+  const emojiGuidance = emojiInstructions[emojiStyle] || emojiInstructions.low;
+
+  const brandContext = brandVoice
+    ? `\n\n**MANDATORY BRAND VOICE INSTRUCTIONS** (YOU MUST FOLLOW THESE EXACTLY):\n${brandVoice}\n\nThe above brand voice instructions are CRITICAL and MUST be followed precisely.`
+    : "";
+
+  let regenerateContext = "";
+  if (isRegenerate && previousOutputs) {
+    const avoidPhrases: string[] = [];
+    if (previousOutputs.igCaption) {
+      avoidPhrases.push(`Previous IG caption: "${previousOutputs.igCaption}"`);
+    }
+    if (previousOutputs.fbCaption) {
+      avoidPhrases.push(`Previous FB caption: "${previousOutputs.fbCaption}"`);
+    }
+    if (avoidPhrases.length > 0) {
+      regenerateContext = `\n\nREGENERATION: Produce DIFFERENT content from:\n${avoidPhrases.join("\n")}`;
+    }
+  }
+
+  return `You are a social media copywriter. Analyze the provided image and create engaging social media posts.
+
+IMPORTANT - Image Analysis Instructions:
+1. Look carefully at what's in the image - food, drinks, people, events, signage, etc.
+2. PAY SPECIAL ATTENTION to any TEXT visible in the image (menu items, promotional text, event names, specials, prices)
+3. Use the visual details and any text to write relevant, specific captions
+4. If you see food/drink items, describe them appetizingly
+5. If you see promotional text or specials, incorporate that information
+6. If you see an event or atmosphere, capture that energy${brandContext}${regenerateContext}
+
+Create engaging captions for Instagram and Facebook based on what you see in the image.
+
+Requirements:
+- Instagram caption: 1-3 short paragraphs, engaging and visual
+- Facebook caption: Slightly longer, conversational, informative
+- ${emojiGuidance}
+- Instagram hashtags: ${counts.ig} relevant tags based on what you see
+- Facebook hashtags: ${counts.fb} relevant tags based on what you see
+- All hashtags MUST include the "#" symbol
+- Keep the tone upbeat, inviting, and on-brand
+
+Return ONLY valid JSON (no markdown, no code blocks):
+{
+  "ig": { "caption": "...", "hashtags": ["#tag1", "#tag2"] },
+  "fb": { "caption": "...", "hashtags": ["#tag1", "#tag2"] },
+  "confidence": 0.85,
+  "needsInfo": false
+}`;
+}
+
 function parseAIResponse(content: string): AIOutputSchema | null {
   try {
     // Try to extract JSON from the response
@@ -925,8 +1002,11 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
     }
     const openai = new OpenAI({ apiKey });
 
-    // 8. Build the prompt using ONLY user-provided text (images are completely ignored)
+    // 8. Determine generation mode: text-based or image-based
     const starterText = postData.starterText;
+    const hasStarterText = !!starterText && starterText.trim().length > 0;
+    const hasImage = !!postData.imageAssetId;
+    const imageUrl = postData.imageUrl || postData.downloadUrl; // Direct download URL if available
 
     // For regeneration, get previous outputs from request or current post data
     let prevOutputs: PreviousOutputs | undefined;
@@ -939,12 +1019,21 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
       };
     }
 
-    const prompt = buildPrompt(starterText, brandVoice, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs);
+    // Decide which mode to use
+    const useVision = !hasStarterText && hasImage && imageUrl;
+    const modelName = useVision ? MODEL_NAME_VISION : MODEL_NAME_TEXT;
+
+    console.info(`[GenerateMode] starterText=${hasStarterText}, hasImage=${hasImage}, useVision=${useVision}, model=${modelName}`);
+
+    // Build appropriate prompt
+    const prompt = hasStarterText
+      ? buildPrompt(starterText, brandVoice, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs)
+      : buildVisionPrompt(brandVoice, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs);
 
     // Generate unique request ID for cache-busting and prompt variation
     const requestId = request.data.requestId || randomUUID();
 
-    // 9. Call OpenAI for caption generation (text-only, no image interpretation)
+    // 9. Call OpenAI for caption generation
     let aiOutput: AIOutputSchema | null = null;
     let attempts = 0;
     const maxAttempts = 2;
@@ -958,7 +1047,6 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
         const promptText = attempts === 1 ? prompt : `${prompt}\n\nPrevious response was invalid JSON. Please return ONLY valid JSON.`;
 
         // Build system message with emoji rules - STRICT LIMITS
-        // low=0-1, medium=2-4, high=5-8
         const emojiSystemRule = emojiStyle === "low"
           ? "EMOJI REQUIREMENT: Maximum 1 emoji per caption."
           : emojiStyle === "medium"
@@ -970,20 +1058,43 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
           ? ` BRAND VOICE REQUIREMENT: You MUST follow these brand voice instructions exactly: "${brandVoice}".`
           : "";
 
-        const completion = await openai.chat.completions.create({
-          model: MODEL_NAME,
-          messages: [
+        // Build messages based on mode (text-only vs vision)
+        let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+
+        if (useVision && imageUrl) {
+          // Vision mode: include image
+          messages = [
             {
               role: "system",
-              content: `You are a social media copywriter. Use ONLY the user-provided text description. Images are completely ignored - do NOT reference, describe, or assume anything about images. Do NOT mention visual elements, food appearance, or photos. ${emojiSystemRule}${brandVoiceSystemRule} Return ONLY valid JSON. ${nonceMessage}`,
+              content: `You are a social media copywriter. Analyze the image carefully and create engaging posts based on what you see. Pay special attention to any TEXT in the image (menu items, specials, promotions, prices, event names). ${emojiSystemRule}${brandVoiceSystemRule} Return ONLY valid JSON. ${nonceMessage}`,
+            },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: promptText },
+                { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
+              ],
+            },
+          ];
+        } else {
+          // Text-only mode
+          messages = [
+            {
+              role: "system",
+              content: `You are a social media copywriter. Use ONLY the user-provided text description. Do NOT reference or describe images. ${emojiSystemRule}${brandVoiceSystemRule} Return ONLY valid JSON. ${nonceMessage}`,
             },
             {
               role: "user",
               content: promptText,
             },
-          ],
-          temperature: 0.8, // Higher temperature for more variation
-          top_p: 0.95, // Enable nucleus sampling for diversity
+          ];
+        }
+
+        const completion = await openai.chat.completions.create({
+          model: modelName,
+          messages,
+          temperature: 0.8,
+          top_p: 0.95,
           max_tokens: 1000,
         });
 
@@ -1050,21 +1161,23 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
           hashtags: aiOutput.fb.hashtags,
         },
         meta: {
-          model: MODEL_NAME,
+          model: modelName,
           generatedAt: FieldValue.serverTimestamp(),
           promptVersion: PROMPT_VERSION,
           confidence: aiOutput.confidence,
           needsInfo: aiOutput.needsInfo,
+          usedVision: useVision,
         },
       },
       status: "generated",
       updatedAt: FieldValue.serverTimestamp(),
     });
 
+    const modeDesc = useVision ? "from image analysis" : "from text";
     return {
       success: true,
       status: "generated",
-      message: `Generated content with ${Math.round(aiOutput.confidence * 100)}% confidence`,
+      message: `Generated content ${modeDesc} with ${Math.round(aiOutput.confidence * 100)}% confidence`,
     };
   }
 );
