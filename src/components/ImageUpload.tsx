@@ -51,11 +51,17 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
 
         const file = acceptedFiles[0];
         onUploadStart();
+        console.log("[ImageUpload] Starting compression...");
         setUploadPhase("compressing");
 
         try {
             // Optimize image: resize and convert to WebP
             const optimized = await optimizeImage(file, file.name);
+            console.log("[ImageUpload] Compression done, starting upload...", {
+                originalSize: file.size,
+                optimizedSize: optimized.blob.size,
+                fileName: optimized.fileName
+            });
 
             setUploadPhase("uploading");
 
@@ -89,10 +95,12 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
             });
 
             setAsset(assetData);
+            console.log("[ImageUpload] Upload complete!");
         } catch (error) {
             console.error("Upload error:", error);
             alert("Failed to upload image.");
         } finally {
+            console.log("[ImageUpload] Resetting phase to null");
             setUploadPhase(null);
             onUploadEnd();
         }
@@ -112,6 +120,7 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
         setIsLoadingUrl(true);
         setUrlError(null);
         onUploadStart();
+        console.log("[ImageUpload] URL - Fetching and compressing...");
         setUploadPhase("compressing");
 
         try {
@@ -134,6 +143,11 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
                 proxyData.contentType,
                 proxyData.fileName
             );
+            console.log("[ImageUpload] URL - Compression done, starting upload...", {
+                originalSize: proxyData.size,
+                optimizedSize: optimized.blob.size,
+                fileName: optimized.fileName
+            });
 
             setUploadPhase("uploading");
 
@@ -203,6 +217,7 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
 
     // Show upload progress state (takes priority over everything)
     if (uploadPhase) {
+        console.log("[ImageUpload] Rendering phase:", uploadPhase);
         return (
             <div className="flex items-center gap-2 h-16 w-36 rounded-lg border border-[var(--accent-primary)] bg-[var(--accent-bg)] px-3">
                 <Loader2 size={16} className="animate-spin text-[var(--accent-primary)] shrink-0" />
