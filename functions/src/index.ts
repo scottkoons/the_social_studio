@@ -737,8 +737,9 @@ Requirements:
 - Instagram caption: 1-3 short paragraphs, engaging
 - Facebook caption: Slightly longer and more informative, conversational tone
 - Emoji usage: ${emojiGuidance}
-- Instagram hashtags: ${counts.ig} relevant tags derived ONLY from the provided text
-- Facebook hashtags: ${counts.fb} relevant tags derived ONLY from the provided text
+- CRITICAL: Do NOT include hashtags in the caption text. Hashtags go ONLY in the hashtags array.
+- Instagram hashtags: ${counts.ig} relevant tags derived ONLY from the provided text (in the hashtags array only)
+- Facebook hashtags: ${counts.fb} relevant tags derived ONLY from the provided text (in the hashtags array only)
 - All hashtags MUST include the "#" symbol (e.g. #FallSpecial, #DinnerTime)
 - No spaces in hashtags (use camelCase if needed)
 - No mentions of competitors or other brands
@@ -747,8 +748,8 @@ Requirements:
 
 Return ONLY valid JSON with this exact shape (no markdown, no code blocks, just JSON):
 {
-  "ig": { "caption": "...", "hashtags": ["#tag1", "#tag2"] },
-  "fb": { "caption": "...", "hashtags": ["#tag1", "#tag2"] },
+  "ig": { "caption": "Caption text WITHOUT hashtags", "hashtags": ["#tag1", "#tag2"] },
+  "fb": { "caption": "Caption text WITHOUT hashtags", "hashtags": ["#tag1", "#tag2"] },
   "confidence": 0.0,
   "needsInfo": false
 }
@@ -822,15 +823,16 @@ Requirements:
 - Instagram caption: 1-3 short paragraphs, engaging and visual
 - Facebook caption: Slightly longer, conversational, informative
 - ${emojiGuidance}
-- Instagram hashtags: ${counts.ig} relevant tags based on what you see
-- Facebook hashtags: ${counts.fb} relevant tags based on what you see
+- CRITICAL: Do NOT include hashtags in the caption text. Hashtags go ONLY in the hashtags array.
+- Instagram hashtags: ${counts.ig} relevant tags based on what you see (in the hashtags array only)
+- Facebook hashtags: ${counts.fb} relevant tags based on what you see (in the hashtags array only)
 - All hashtags MUST include the "#" symbol
 - Keep the tone upbeat, inviting, and on-brand
 
 Return ONLY valid JSON (no markdown, no code blocks):
 {
-  "ig": { "caption": "...", "hashtags": ["#tag1", "#tag2"] },
-  "fb": { "caption": "...", "hashtags": ["#tag1", "#tag2"] },
+  "ig": { "caption": "Caption text WITHOUT hashtags", "hashtags": ["#tag1", "#tag2"] },
+  "fb": { "caption": "Caption text WITHOUT hashtags", "hashtags": ["#tag1", "#tag2"] },
   "confidence": 0.85,
   "needsInfo": false
 }`;
@@ -1024,20 +1026,31 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
         // Check for pre-computed download URL first
         if (assetData.downloadUrl) {
           imageUrl = assetData.downloadUrl;
+        } else if (assetData.storagePath && assetData.downloadToken) {
+          // Construct Firebase download URL using the token
+          const bucketName = storage.bucket().name;
+          const encodedPath = encodeURIComponent(assetData.storagePath);
+          imageUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodedPath}?alt=media&token=${assetData.downloadToken}`;
         } else if (assetData.storagePath) {
-          // Generate a signed URL from Firebase Storage
-          const bucket = storage.bucket();
-          const file = bucket.file(assetData.storagePath);
-          const [signedUrl] = await file.getSignedUrl({
-            action: "read",
-            expires: Date.now() + 15 * 60 * 1000, // 15 minutes
-          });
-          imageUrl = signedUrl;
+          // Try to get download URL via Firebase Admin (public URL)
+          try {
+            const bucket = storage.bucket();
+            const file = bucket.file(assetData.storagePath);
+            // Make the file publicly readable temporarily and get URL
+            const [metadata] = await file.getMetadata();
+            if (metadata.metadata?.firebaseStorageDownloadTokens) {
+              const token = metadata.metadata.firebaseStorageDownloadTokens;
+              const encodedPath = encodeURIComponent(assetData.storagePath);
+              imageUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${token}`;
+            }
+          } catch (err) {
+            console.warn(`[ImageUrl] Failed to get metadata for ${assetData.storagePath}:`, err);
+          }
         }
       }
     }
 
-    console.info(`[ImageUrl] hasImage=${hasImage}, imageUrl=${imageUrl ? "present" : "missing"}`);
+    console.info(`[ImageUrl] hasImage=${hasImage}, imageUrl=${imageUrl ? "present (" + imageUrl.substring(0, 50) + "...)" : "missing"}`);
 
     // For regeneration, get previous outputs from request or current post data
     let prevOutputs: PreviousOutputs | undefined;

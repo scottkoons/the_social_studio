@@ -298,13 +298,14 @@ export default function PostsPdfPrintRoot({
                         style={{
                             width: `${PAGE_WIDTH_PX}px`,
                             height: `${PAGE_HEIGHT_PX}px`,
-                            padding: `${PAGE_MARGIN_PX}px`,
+                            padding: `${PAGE_MARGIN_PX + 8}px ${PAGE_MARGIN_PX}px ${PAGE_MARGIN_PX}px ${PAGE_MARGIN_PX}px`,
                             backgroundColor: "#ffffff",
                             fontFamily: "system-ui, -apple-system, sans-serif",
                             boxSizing: "border-box",
                             marginBottom: "20px",
                             display: "flex",
                             flexDirection: "column",
+                            overflow: "visible",
                         }}
                     >
                         {/* Title */}
@@ -339,60 +340,96 @@ export default function PostsPdfPrintRoot({
                                 borderTopRightRadius: "4px",
                             }}
                         >
-                            <div
-                                style={{
-                                    width: `${COL_DATE_WIDTH_PX}px`,
-                                    padding: "0 8px",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    borderRight: "1px solid rgba(255,255,255,0.2)",
-                                }}
-                            >
-                                <span style={{ fontSize: "10px", fontWeight: 600, color: "#ffffff" }}>
-                                    Date/Time
-                                </span>
-                            </div>
-                            <div
-                                style={{
-                                    width: `${COL_IMAGE_WIDTH_PX}px`,
-                                    padding: "0 8px",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    borderRight: "1px solid rgba(255,255,255,0.2)",
-                                }}
-                            >
-                                <span style={{ fontSize: "10px", fontWeight: 600, color: "#ffffff" }}>
-                                    Image
-                                </span>
-                            </div>
-                            <div
-                                style={{
-                                    width: `${COL_IG_WIDTH_PX}px`,
-                                    padding: "0 8px",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    borderRight: "1px solid rgba(255,255,255,0.2)",
-                                }}
-                            >
-                                <span style={{ fontSize: "10px", fontWeight: 600, color: "#ffffff" }}>
-                                    Instagram Post
-                                </span>
-                            </div>
-                            <div
-                                style={{
-                                    width: `${COL_FB_WIDTH_PX}px`,
-                                    padding: "0 8px",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                }}
-                            >
-                                <span style={{ fontSize: "10px", fontWeight: 600, color: "#ffffff" }}>
-                                    Facebook Post
-                                </span>
-                            </div>
+                            {includeImages ? (
+                                <>
+                                    {/* Full 4-column header when images are included */}
+                                    <div
+                                        style={{
+                                            width: `${COL_DATE_WIDTH_PX}px`,
+                                            padding: "0 8px",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            borderRight: "1px solid rgba(255,255,255,0.2)",
+                                        }}
+                                    >
+                                        <span style={{ fontSize: "10px", fontWeight: 600, color: "#ffffff" }}>
+                                            Date/Time
+                                        </span>
+                                    </div>
+                                    <div
+                                        style={{
+                                            width: `${COL_IMAGE_WIDTH_PX}px`,
+                                            padding: "0 8px",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            borderRight: "1px solid rgba(255,255,255,0.2)",
+                                        }}
+                                    >
+                                        <span style={{ fontSize: "10px", fontWeight: 600, color: "#ffffff" }}>
+                                            Image
+                                        </span>
+                                    </div>
+                                    <div
+                                        style={{
+                                            width: `${COL_IG_WIDTH_PX}px`,
+                                            padding: "0 8px",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            borderRight: "1px solid rgba(255,255,255,0.2)",
+                                        }}
+                                    >
+                                        <span style={{ fontSize: "10px", fontWeight: 600, color: "#ffffff" }}>
+                                            Instagram Post
+                                        </span>
+                                    </div>
+                                    <div
+                                        style={{
+                                            width: `${COL_FB_WIDTH_PX}px`,
+                                            padding: "0 8px",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                        }}
+                                    >
+                                        <span style={{ fontSize: "10px", fontWeight: 600, color: "#ffffff" }}>
+                                            Facebook Post
+                                        </span>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    {/* Compact 2-column header when images are not included */}
+                                    <div
+                                        style={{
+                                            width: "80px",
+                                            flexShrink: 0,
+                                            padding: "0 8px",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            borderRight: "1px solid rgba(255,255,255,0.2)",
+                                        }}
+                                    >
+                                        <span style={{ fontSize: "10px", fontWeight: 600, color: "#ffffff" }}>
+                                            Date/Time
+                                        </span>
+                                    </div>
+                                    <div
+                                        style={{
+                                            flex: 1,
+                                            padding: "0 8px",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                        }}
+                                    >
+                                        <span style={{ fontSize: "10px", fontWeight: 600, color: "#ffffff" }}>
+                                            Post Text
+                                        </span>
+                                    </div>
+                                </>
+                            )}
                         </div>
 
                         {/* Table Data Rows */}

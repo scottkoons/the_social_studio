@@ -221,59 +221,53 @@ const PostsPdfRow = forwardRef<HTMLDivElement, PostsPdfRowProps>(
                         boxSizing: "border-box",
                     }}
                 >
-                    <div
-                        style={{
-                            width: `${IMAGE_SIZE_PX}px`,
-                            height: `${IMAGE_SIZE_PX}px`,
-                            borderRadius: "2px",
-                            overflow: "hidden",
-                            backgroundColor: "#f3f4f6",
-                        }}
-                    >
-                        {imageDataUrl ? (
-                            <img
-                                src={imageDataUrl}
-                                alt=""
-                                style={{
-                                    width: "100%",
-                                    height: "100%",
-                                    objectFit: "contain",
-                                }}
-                            />
-                        ) : hasImage ? (
-                            <div
-                                style={{
-                                    width: "100%",
-                                    height: "100%",
-                                    backgroundColor: "#e5e7eb",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                }}
-                            >
-                                <span style={{ fontSize: "8px", color: "#6b7280" }}>
-                                    Image
-                                </span>
-                            </div>
-                        ) : (
-                            <div
-                                style={{
-                                    width: "100%",
-                                    height: "100%",
-                                    backgroundColor: "#f9fafb",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    border: "1px dashed #d1d5db",
-                                    boxSizing: "border-box",
-                                }}
-                            >
-                                <span style={{ fontSize: "7px", color: "#9ca3af" }}>
-                                    No Image
-                                </span>
-                            </div>
-                        )}
-                    </div>
+                    {imageDataUrl ? (
+                        <img
+                            src={imageDataUrl}
+                            alt=""
+                            style={{
+                                maxWidth: `${IMAGE_SIZE_PX}px`,
+                                maxHeight: `${IMAGE_SIZE_PX}px`,
+                                width: "auto",
+                                height: "auto",
+                                borderRadius: "2px",
+                            }}
+                        />
+                    ) : hasImage ? (
+                        <div
+                            style={{
+                                width: `${IMAGE_SIZE_PX}px`,
+                                height: `${IMAGE_SIZE_PX}px`,
+                                backgroundColor: "#e5e7eb",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                borderRadius: "2px",
+                            }}
+                        >
+                            <span style={{ fontSize: "8px", color: "#6b7280" }}>
+                                Image
+                            </span>
+                        </div>
+                    ) : (
+                        <div
+                            style={{
+                                width: `${IMAGE_SIZE_PX}px`,
+                                height: `${IMAGE_SIZE_PX}px`,
+                                backgroundColor: "#f9fafb",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                border: "1px dashed #d1d5db",
+                                borderRadius: "2px",
+                                boxSizing: "border-box",
+                            }}
+                        >
+                            <span style={{ fontSize: "7px", color: "#9ca3af" }}>
+                                No Image
+                            </span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Instagram Post Column */}

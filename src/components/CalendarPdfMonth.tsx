@@ -123,11 +123,9 @@ const CalendarPdfMonth = forwardRef<HTMLDivElement, CalendarPdfMonthProps>(
                                             <div
                                                 style={{
                                                     width: "100%",
-                                                    height: "50px",
                                                     marginBottom: "4px",
-                                                    borderRadius: "4px",
-                                                    overflow: "hidden",
-                                                    backgroundColor: "#e5e7eb",
+                                                    display: "flex",
+                                                    justifyContent: "center",
                                                 }}
                                             >
                                                 {includeImages && imageDataUrl ? (
@@ -136,9 +134,11 @@ const CalendarPdfMonth = forwardRef<HTMLDivElement, CalendarPdfMonthProps>(
                                                         src={imageDataUrl}
                                                         alt=""
                                                         style={{
-                                                            width: "100%",
-                                                            height: "100%",
-                                                            objectFit: "contain",
+                                                            maxWidth: "100%",
+                                                            maxHeight: "50px",
+                                                            width: "auto",
+                                                            height: "auto",
+                                                            borderRadius: "4px",
                                                         }}
                                                     />
                                                 ) : (
@@ -146,11 +146,12 @@ const CalendarPdfMonth = forwardRef<HTMLDivElement, CalendarPdfMonthProps>(
                                                     <div
                                                         style={{
                                                             width: "100%",
-                                                            height: "100%",
+                                                            height: "50px",
                                                             backgroundColor: "#d1d5db",
                                                             display: "flex",
                                                             alignItems: "center",
                                                             justifyContent: "center",
+                                                            borderRadius: "4px",
                                                         }}
                                                     >
                                                         <span
