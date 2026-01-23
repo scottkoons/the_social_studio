@@ -18,6 +18,8 @@ interface ImageUploadProps {
     onUploadEnd: () => void;
 }
 
+type UploadPhase = "compressing" | "uploading" | null;
+
 export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageUploadProps) {
     const { user, workspaceId } = useAuth();
     const [asset, setAsset] = useState<any>(null);
@@ -27,6 +29,7 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
     const [urlValue, setUrlValue] = useState("");
     const [isLoadingUrl, setIsLoadingUrl] = useState(false);
     const [urlError, setUrlError] = useState<string | null>(null);
+    const [uploadPhase, setUploadPhase] = useState<UploadPhase>(null);
 
     useEffect(() => {
         const fetchAsset = async () => {
@@ -48,10 +51,13 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
 
         const file = acceptedFiles[0];
         onUploadStart();
+        setUploadPhase("compressing");
 
         try {
             // Optimize image: resize and convert to WebP
             const optimized = await optimizeImage(file, file.name);
+
+            setUploadPhase("uploading");
 
             // Storage path: assets/{workspaceId}/{YYYY-MM-DD}/{optimizedFilename}
             const storagePath = `assets/${workspaceId}/${post.date}/${optimized.fileName}`;
@@ -87,6 +93,7 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
             console.error("Upload error:", error);
             alert("Failed to upload image.");
         } finally {
+            setUploadPhase(null);
             onUploadEnd();
         }
     }, [user, workspaceId, post, onUploadStart, onUploadEnd]);
@@ -105,6 +112,7 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
         setIsLoadingUrl(true);
         setUrlError(null);
         onUploadStart();
+        setUploadPhase("compressing");
 
         try {
             // Use our API route to proxy the image fetch (avoids CORS)
@@ -126,6 +134,8 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
                 proxyData.contentType,
                 proxyData.fileName
             );
+
+            setUploadPhase("uploading");
 
             // Storage path: assets/{workspaceId}/{YYYY-MM-DD}/{optimizedFilename}
             const storagePath = `assets/${workspaceId}/${post.date}/${optimized.fileName}`;
@@ -164,6 +174,7 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
             console.error("URL fetch error:", error);
             setUrlError(error instanceof Error ? error.message : "Failed to load image from URL");
         } finally {
+            setUploadPhase(null);
             setIsLoadingUrl(false);
             onUploadEnd();
         }
@@ -282,6 +293,23 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
                     >
                         Cancel
                     </button>
+                </div>
+            </div>
+        );
+    }
+
+    // Show upload progress state
+    if (uploadPhase) {
+        return (
+            <div className="flex items-center gap-2 h-16 w-36 rounded-lg border border-[var(--accent-primary)] bg-[var(--accent-bg)] px-3">
+                <Loader2 size={16} className="animate-spin text-[var(--accent-primary)] shrink-0" />
+                <div className="flex flex-col">
+                    <span className="text-[10px] font-medium text-[var(--accent-primary)]">
+                        {uploadPhase === "compressing" ? "Compressing..." : "Uploading..."}
+                    </span>
+                    <span className="text-[8px] text-[var(--text-muted)]">
+                        {uploadPhase === "compressing" ? "Converting to WebP" : "Saving to cloud"}
+                    </span>
                 </div>
             </div>
         );
