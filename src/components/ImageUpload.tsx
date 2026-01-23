@@ -20,6 +20,17 @@ interface ImageUploadProps {
 
 type UploadPhase = "compressing" | "uploading" | null;
 
+interface FileSizes {
+    original: number;
+    compressed: number;
+}
+
+function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
 export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageUploadProps) {
     const { user, workspaceId } = useAuth();
     const [asset, setAsset] = useState<any>(null);
@@ -30,6 +41,7 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
     const [isLoadingUrl, setIsLoadingUrl] = useState(false);
     const [urlError, setUrlError] = useState<string | null>(null);
     const [uploadPhase, setUploadPhase] = useState<UploadPhase>(null);
+    const [fileSizes, setFileSizes] = useState<FileSizes | null>(null);
 
     useEffect(() => {
         const fetchAsset = async () => {
@@ -51,18 +63,13 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
 
         const file = acceptedFiles[0];
         onUploadStart();
-        console.log("[ImageUpload] Starting compression...");
+        setFileSizes(null);
         setUploadPhase("compressing");
 
         try {
             // Optimize image: resize and convert to WebP
             const optimized = await optimizeImage(file, file.name);
-            console.log("[ImageUpload] Compression done, starting upload...", {
-                originalSize: file.size,
-                optimizedSize: optimized.blob.size,
-                fileName: optimized.fileName
-            });
-
+            setFileSizes({ original: file.size, compressed: optimized.blob.size });
             setUploadPhase("uploading");
 
             // Storage path: assets/{workspaceId}/{YYYY-MM-DD}/{optimizedFilename}
@@ -95,13 +102,12 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
             });
 
             setAsset(assetData);
-            console.log("[ImageUpload] Upload complete!");
         } catch (error) {
             console.error("Upload error:", error);
             alert("Failed to upload image.");
         } finally {
-            console.log("[ImageUpload] Resetting phase to null");
             setUploadPhase(null);
+            setFileSizes(null);
             onUploadEnd();
         }
     }, [user, workspaceId, post, onUploadStart, onUploadEnd]);
@@ -120,7 +126,7 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
         setIsLoadingUrl(true);
         setUrlError(null);
         onUploadStart();
-        console.log("[ImageUpload] URL - Fetching and compressing...");
+        setFileSizes(null);
         setUploadPhase("compressing");
 
         try {
@@ -143,12 +149,7 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
                 proxyData.contentType,
                 proxyData.fileName
             );
-            console.log("[ImageUpload] URL - Compression done, starting upload...", {
-                originalSize: proxyData.size,
-                optimizedSize: optimized.blob.size,
-                fileName: optimized.fileName
-            });
-
+            setFileSizes({ original: proxyData.size, compressed: optimized.blob.size });
             setUploadPhase("uploading");
 
             // Storage path: assets/{workspaceId}/{YYYY-MM-DD}/{optimizedFilename}
@@ -189,6 +190,7 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
             setUrlError(error instanceof Error ? error.message : "Failed to load image from URL");
         } finally {
             setUploadPhase(null);
+            setFileSizes(null);
             setIsLoadingUrl(false);
             onUploadEnd();
         }
@@ -217,18 +219,45 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
 
     // Show upload progress state (takes priority over everything)
     if (uploadPhase) {
-        console.log("[ImageUpload] Rendering phase:", uploadPhase);
+        const savings = fileSizes
+            ? Math.round((1 - fileSizes.compressed / fileSizes.original) * 100)
+            : 0;
+
         return (
-            <div className="flex items-center gap-2 h-16 w-36 rounded-lg border border-[var(--accent-primary)] bg-[var(--accent-bg)] px-3">
-                <Loader2 size={16} className="animate-spin text-[var(--accent-primary)] shrink-0" />
-                <div className="flex flex-col">
+            <div className="flex flex-col gap-1.5 h-16 w-44 rounded-lg border border-[var(--accent-primary)] bg-[var(--accent-bg)] px-3 py-2 justify-center">
+                <div className="flex items-center gap-2">
+                    <Loader2 size={14} className="animate-spin text-[var(--accent-primary)] shrink-0" />
                     <span className="text-[10px] font-medium text-[var(--accent-primary)]">
                         {uploadPhase === "compressing" ? "Compressing..." : "Uploading..."}
                     </span>
-                    <span className="text-[8px] text-[var(--text-muted)]">
-                        {uploadPhase === "compressing" ? "Converting to WebP" : "Saving to cloud"}
-                    </span>
                 </div>
+
+                {/* Progress bar */}
+                <div className="w-full h-1.5 bg-[var(--border-primary)] rounded-full overflow-hidden">
+                    <div
+                        className={`h-full bg-[var(--accent-primary)] rounded-full transition-all duration-300 ${
+                            uploadPhase === "compressing" ? "w-1/2" : "w-full"
+                        }`}
+                    />
+                </div>
+
+                {/* File size info */}
+                {fileSizes && uploadPhase === "uploading" && (
+                    <div className="flex items-center justify-between text-[8px]">
+                        <span className="text-[var(--text-muted)] line-through">
+                            {formatFileSize(fileSizes.original)}
+                        </span>
+                        <span className="text-[var(--accent-primary)] font-medium">
+                            {formatFileSize(fileSizes.compressed)} (-{savings}%)
+                        </span>
+                    </div>
+                )}
+
+                {uploadPhase === "compressing" && (
+                    <span className="text-[8px] text-[var(--text-muted)]">
+                        Converting to WebP...
+                    </span>
+                )}
             </div>
         );
     }
