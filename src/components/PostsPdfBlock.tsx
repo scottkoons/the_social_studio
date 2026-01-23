@@ -68,7 +68,8 @@ const PostsPdfRow = forwardRef<HTMLDivElement, PostsPdfRowProps>(
                             fontSize: `${FONT_SIZE_PT}px`,
                             fontWeight: 500,
                             color: "#374151",
-                            lineHeight: LINE_HEIGHT,
+                            lineHeight: 1.5,
+                            whiteSpace: "pre-wrap",
                         }}
                     >
                         {dateTimeStr}

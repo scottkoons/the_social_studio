@@ -175,24 +175,33 @@ export function paginatePosts(posts: PostDay[]): PdfPage[] {
 }
 
 /**
+ * Formats a time string (HH:MM) to display format (h:mmAM/PM)
+ */
+function formatTime(time: string | undefined, fallback = "12:00PM"): string {
+    if (!time) return fallback;
+    const [hours, minutes] = time.split(":").map(Number);
+    const period = hours >= 12 ? "PM" : "AM";
+    const displayHours = hours % 12 || 12;
+    return `${displayHours}:${minutes.toString().padStart(2, "0")}${period}`;
+}
+
+/**
  * Formats date/time for display in the table.
- * Format: "1/23/26 | 9:20AM"
+ * Format:
+ *   "1/23/26
+ *    FB: 9:20AM
+ *    IG: 9:25AM"
  */
 export function formatDateTimeForTable(post: PostDay): string {
     const date = parseISO(post.date);
     const denverDate = toZonedTime(date, DENVER_TZ);
     const dateStr = format(denverDate, "M/dd/yy");
 
-    // Get time
-    let timeStr = "12:00PM";
-    if (post.postingTime) {
-        const [hours, minutes] = post.postingTime.split(":").map(Number);
-        const period = hours >= 12 ? "PM" : "AM";
-        const displayHours = hours % 12 || 12;
-        timeStr = `${displayHours}:${minutes.toString().padStart(2, "0")}${period}`;
-    }
+    // Get FB and IG times (fall back to legacy postingTime if platform-specific not set)
+    const fbTime = formatTime(post.postingTimeFb || post.postingTime);
+    const igTime = formatTime(post.postingTimeIg || post.postingTime);
 
-    return `${dateStr}  |  ${timeStr}`;
+    return `${dateStr}\nFB: ${fbTime}\nIG: ${igTime}`;
 }
 
 /**
