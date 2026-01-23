@@ -110,10 +110,54 @@ export function getDenverDate(): Date {
 
 /**
  * Checks if a YYYY-MM-DD string is today or in the past relative to Denver.
+ * Note: For posts with posting times, use isPostPastDue instead.
  */
 export function isPastOrTodayInDenver(dateStr: string): boolean {
     const todayStr = getTodayInDenver();
     return dateStr <= todayStr;
+}
+
+/**
+ * Checks if a post's date/time has passed in Denver timezone.
+ * - If date is before today: past due
+ * - If date is after today: not past due
+ * - If date is today: check if the latest posting time has passed
+ */
+export function isPostPastDue(post: {
+    date: string;
+    postingTime?: string;
+    postingTimeIg?: string;
+    postingTimeFb?: string;
+}): boolean {
+    const todayStr = getTodayInDenver();
+
+    // If date is before today, it's past due
+    if (post.date < todayStr) {
+        return true;
+    }
+
+    // If date is after today, it's not past due
+    if (post.date > todayStr) {
+        return false;
+    }
+
+    // Date is today - check posting times
+    const nowInDenver = formatInTimeZone(new Date(), DENVER_TZ, "HH:mm");
+
+    // Get the latest posting time (use the later of FB/IG times, or legacy postingTime)
+    const times: string[] = [];
+    if (post.postingTimeFb) times.push(post.postingTimeFb);
+    if (post.postingTimeIg) times.push(post.postingTimeIg);
+    if (times.length === 0 && post.postingTime) times.push(post.postingTime);
+
+    // If no posting times set, default to end of day (not past due yet)
+    if (times.length === 0) {
+        return false;
+    }
+
+    // Get the latest time - if the latest time has passed, the post is past due
+    const latestTime = times.sort().pop()!;
+    return nowInDenver > latestTime;
 }
 
 /**
@@ -148,10 +192,17 @@ export function formatDisplayDate(dateStr: string): string {
 /**
  * Returns common flags for a post.
  */
-export function computeFlags(post: { date: string, starterText?: string, imageAssetId?: string }): string[] {
+export function computeFlags(post: {
+    date: string;
+    starterText?: string;
+    imageAssetId?: string;
+    postingTime?: string;
+    postingTimeIg?: string;
+    postingTimeFb?: string;
+}): string[] {
     const flags: string[] = [];
 
-    if (isPastOrTodayInDenver(post.date)) {
+    if (isPostPastDue(post)) {
         flags.push("Past date");
     }
 

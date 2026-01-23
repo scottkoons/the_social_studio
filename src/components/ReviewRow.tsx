@@ -10,7 +10,7 @@ import StatusPill from "./ui/StatusPill";
 import ConfirmModal from "./ui/ConfirmModal";
 import PostDetailModal from "./PostDetailModal";
 import { Loader2, RefreshCw, Trash2, AlertCircle, Expand } from "lucide-react";
-import { isPastOrTodayInDenver, formatDisplayDate } from "@/lib/utils";
+import { isPostPastDue, formatDisplayDate } from "@/lib/utils";
 import { movePostDay } from "@/lib/postDayMove";
 import { useAuth } from "@/context/AuthContext";
 import { formatTimeForDisplay, generatePlatformPostingTimes } from "@/lib/postingTime";
@@ -64,8 +64,8 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [detailImageUrl, setDetailImageUrl] = useState<string | null>(null);
 
-    // Live check if date is in the past
-    const isPast = isPastOrTodayInDenver(post.date);
+    // Live check if date/time is past due
+    const isPast = isPostPastDue(post);
 
     const showInstagram = platformFilter === "all" || platformFilter === "instagram";
     const showFacebook = platformFilter === "all" || platformFilter === "facebook";

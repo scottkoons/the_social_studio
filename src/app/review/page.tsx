@@ -18,7 +18,7 @@ import { Play, Download, FileText, Loader2, Trash2 } from "lucide-react";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useHidePastUnsent } from "@/hooks/useHidePastUnsent";
 import { useWorkspaceUiSettings } from "@/hooks/useWorkspaceUiSettings";
-import { isPastOrTodayInDenver } from "@/lib/utils";
+import { isPostPastDue } from "@/lib/utils";
 import { EmojiStyle } from "@/lib/types";
 import { PostsPdfExportProgress, getPhaseText as getPostsPhaseText } from "@/lib/postsPdfExport";
 
@@ -292,7 +292,7 @@ export default function ReviewPage() {
         const toProcess: { post: PostDay; hadExistingAi: boolean }[] = [];
 
         for (const post of targets) {
-            const isPast = isPastOrTodayInDenver(post.date);
+            const isPast = isPostPastDue(post);
             if (isPast && post.status !== "sent") {
                 skippedPastUnsent++;
                 continue;

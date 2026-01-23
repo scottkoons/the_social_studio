@@ -65,18 +65,33 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
         onUploadStart();
         setFileSizes(null);
         setUploadPhase("compressing");
+        const compressStart = Date.now();
 
         try {
             // Optimize image: resize and convert to WebP
             const optimized = await optimizeImage(file, file.name);
             setFileSizes({ original: file.size, compressed: optimized.blob.size });
+
+            // Ensure compressing phase shows for at least 500ms
+            const compressElapsed = Date.now() - compressStart;
+            if (compressElapsed < 500) {
+                await new Promise(r => setTimeout(r, 500 - compressElapsed));
+            }
+
             setUploadPhase("uploading");
+            const uploadStart = Date.now();
 
             // Storage path: assets/{workspaceId}/{YYYY-MM-DD}/{optimizedFilename}
             const storagePath = `assets/${workspaceId}/${post.date}/${optimized.fileName}`;
             const storageRef = ref(storage, storagePath);
 
             await uploadBytes(storageRef, optimized.blob);
+
+            // Ensure uploading phase shows for at least 500ms
+            const uploadElapsed = Date.now() - uploadStart;
+            if (uploadElapsed < 500) {
+                await new Promise(r => setTimeout(r, 500 - uploadElapsed));
+            }
 
             // Create asset doc under workspace
             const assetId = crypto.randomUUID();
@@ -128,6 +143,7 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
         onUploadStart();
         setFileSizes(null);
         setUploadPhase("compressing");
+        const compressStart = Date.now();
 
         try {
             // Use our API route to proxy the image fetch (avoids CORS)
@@ -150,13 +166,27 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
                 proxyData.fileName
             );
             setFileSizes({ original: proxyData.size, compressed: optimized.blob.size });
+
+            // Ensure compressing phase shows for at least 500ms
+            const compressElapsed = Date.now() - compressStart;
+            if (compressElapsed < 500) {
+                await new Promise(r => setTimeout(r, 500 - compressElapsed));
+            }
+
             setUploadPhase("uploading");
+            const uploadStart = Date.now();
 
             // Storage path: assets/{workspaceId}/{YYYY-MM-DD}/{optimizedFilename}
             const storagePath = `assets/${workspaceId}/${post.date}/${optimized.fileName}`;
             const storageRef = ref(storage, storagePath);
 
             await uploadBytes(storageRef, optimized.blob);
+
+            // Ensure uploading phase shows for at least 500ms
+            const uploadElapsed = Date.now() - uploadStart;
+            if (uploadElapsed < 500) {
+                await new Promise(r => setTimeout(r, 500 - uploadElapsed));
+            }
 
             // Create asset doc under workspace
             const assetId = crypto.randomUUID();

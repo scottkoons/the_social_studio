@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { db } from "@/lib/firebase";
 import { doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
-import { isPastOrTodayInDenver, formatDisplayDate } from "@/lib/utils";
+import { isPostPastDue, formatDisplayDate } from "@/lib/utils";
 import { movePostDay } from "@/lib/postDayMove";
 import { PostDay, getPostDocId } from "@/lib/types";
 import ImageUpload from "./ImageUpload";
@@ -40,7 +40,7 @@ export default function TableRow({ post, allPostDates, isSelected, onSelect, isH
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
-    const isPast = isPastOrTodayInDenver(post.date);
+    const isPast = isPostPastDue(post);
 
     // Scroll to row when highlighted
     useEffect(() => {
