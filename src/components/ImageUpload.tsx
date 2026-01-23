@@ -201,6 +201,23 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
         }
     };
 
+    // Show upload progress state (takes priority over everything)
+    if (uploadPhase) {
+        return (
+            <div className="flex items-center gap-2 h-16 w-36 rounded-lg border border-[var(--accent-primary)] bg-[var(--accent-bg)] px-3">
+                <Loader2 size={16} className="animate-spin text-[var(--accent-primary)] shrink-0" />
+                <div className="flex flex-col">
+                    <span className="text-[10px] font-medium text-[var(--accent-primary)]">
+                        {uploadPhase === "compressing" ? "Compressing..." : "Uploading..."}
+                    </span>
+                    <span className="text-[8px] text-[var(--text-muted)]">
+                        {uploadPhase === "compressing" ? "Converting to WebP" : "Saving to cloud"}
+                    </span>
+                </div>
+            </div>
+        );
+    }
+
     // Image preview with asset
     if (asset) {
         return (
@@ -293,23 +310,6 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
                     >
                         Cancel
                     </button>
-                </div>
-            </div>
-        );
-    }
-
-    // Show upload progress state
-    if (uploadPhase) {
-        return (
-            <div className="flex items-center gap-2 h-16 w-36 rounded-lg border border-[var(--accent-primary)] bg-[var(--accent-bg)] px-3">
-                <Loader2 size={16} className="animate-spin text-[var(--accent-primary)] shrink-0" />
-                <div className="flex flex-col">
-                    <span className="text-[10px] font-medium text-[var(--accent-primary)]">
-                        {uploadPhase === "compressing" ? "Compressing..." : "Uploading..."}
-                    </span>
-                    <span className="text-[8px] text-[var(--text-muted)]">
-                        {uploadPhase === "compressing" ? "Converting to WebP" : "Saving to cloud"}
-                    </span>
                 </div>
             </div>
         );
