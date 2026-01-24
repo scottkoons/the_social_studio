@@ -236,7 +236,18 @@ export default function PostsPdfPrintRoot({
                         backgroundColor: "#ffffff",
                         logging: false,
                         removeContainer: true,
+                        x: 0,
+                        y: 0,
+                        scrollX: 0,
+                        scrollY: 0,
+                        windowWidth: PAGE_WIDTH_PX + 100,
+                        windowHeight: PAGE_HEIGHT_PX + 100,
                         onclone: (clonedDoc, clonedElement) => {
+                            // Reset positioning in clone to ensure full capture
+                            clonedElement.style.position = "relative";
+                            clonedElement.style.left = "0";
+                            clonedElement.style.top = "0";
+
                             const clonedImages = clonedElement.querySelectorAll("img");
                             clonedImages.forEach((img) => {
                                 if (!img.complete || img.naturalWidth === 0) {
@@ -287,7 +298,12 @@ export default function PostsPdfPrintRoot({
 
     return (
         <div
-            style={{ position: "fixed", left: "-10000px", top: 0, zIndex: -9999 }}
+            style={{
+                position: "fixed",
+                left: "-10000px",
+                top: "0px",
+                zIndex: -9999,
+            }}
             aria-hidden="true"
         >
             <div ref={containerRef}>
@@ -298,7 +314,7 @@ export default function PostsPdfPrintRoot({
                         style={{
                             width: `${PAGE_WIDTH_PX}px`,
                             height: `${PAGE_HEIGHT_PX}px`,
-                            padding: `${PAGE_MARGIN_PX + 8}px ${PAGE_MARGIN_PX}px ${PAGE_MARGIN_PX}px ${PAGE_MARGIN_PX}px`,
+                            padding: `${PAGE_MARGIN_PX + 16}px ${PAGE_MARGIN_PX}px ${PAGE_MARGIN_PX}px ${PAGE_MARGIN_PX}px`,
                             backgroundColor: "#ffffff",
                             fontFamily: "system-ui, -apple-system, sans-serif",
                             boxSizing: "border-box",
@@ -334,8 +350,10 @@ export default function PostsPdfPrintRoot({
                             style={{
                                 display: "flex",
                                 width: `${CONTENT_WIDTH_PX}px`,
+                                minHeight: `${HEADER_ROW_HEIGHT_PX}px`,
                                 height: `${HEADER_ROW_HEIGHT_PX}px`,
                                 backgroundColor: HEADER_COLOR,
+                                marginTop: "4px",
                                 borderTopLeftRadius: "4px",
                                 borderTopRightRadius: "4px",
                             }}
