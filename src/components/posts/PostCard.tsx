@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { Instagram, Facebook, Edit2, Image as ImageIcon, FileText, Layers } from "lucide-react";
+import { Instagram, Facebook, Edit2, Image as ImageIcon, FileText, Layers, ZoomIn, X } from "lucide-react";
 import StatusDot from "@/components/ui/StatusDot";
 import Tooltip from "@/components/ui/Tooltip";
 import { PostDay, getPostDocId } from "@/lib/types";
@@ -57,7 +57,25 @@ export default function PostCard({
 }: PostCardProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [showLightbox, setShowLightbox] = useState(false);
   const docId = getPostDocId(post);
+
+  // Close lightbox on ESC
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && showLightbox) {
+        setShowLightbox(false);
+      }
+    };
+    if (showLightbox) {
+      window.addEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = "hidden";
+    }
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = "";
+    };
+  }, [showLightbox]);
 
   const handleDragStart = (e: React.DragEvent) => {
     setIsDragging(true);
@@ -110,8 +128,41 @@ export default function PostCard({
   // Get preview text (first line of IG caption or starter text)
   const previewText = post.ai?.ig?.caption?.split("\n")[0] || post.starterText || "";
 
+  // Lightbox modal (shared by both variants)
+  const lightboxModal = showLightbox && imageUrl && (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90"
+      onClick={() => setShowLightbox(false)}
+    >
+      <button
+        onClick={() => setShowLightbox(false)}
+        className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+        aria-label="Close"
+      >
+        <X className="w-6 h-6 text-white" />
+      </button>
+      <div
+        className="relative max-w-[90vw] max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Image
+          src={imageUrl}
+          alt="Post image"
+          width={1200}
+          height={1200}
+          className="max-w-full max-h-[90vh] object-contain"
+          priority
+        />
+      </div>
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/50 text-xs">
+        Press ESC or click anywhere to close
+      </div>
+    </div>
+  );
+
   if (variant === "list") {
     return (
+      <>
       <div
         className={`
           group flex items-center gap-4 px-4 py-3 border-b border-[var(--border-secondary)]
@@ -140,15 +191,27 @@ export default function PostCard({
         </div>
 
         {/* Thumbnail */}
-        <div className="relative w-12 h-12 rounded-md overflow-hidden bg-[var(--bg-tertiary)] flex-shrink-0">
+        <div className="relative w-12 h-12 rounded-md overflow-hidden bg-[var(--bg-tertiary)] flex-shrink-0 group/thumb">
           {imageUrl ? (
-            <Image
-              src={imageUrl}
-              alt=""
-              fill
-              className="object-cover"
-              sizes="48px"
-            />
+            <>
+              <Image
+                src={imageUrl}
+                alt=""
+                fill
+                className="object-cover"
+                sizes="48px"
+              />
+              <button
+                className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/40 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowLightbox(true);
+                }}
+                title="Enlarge image"
+              >
+                <ZoomIn className="w-4 h-4 text-white opacity-0 group-hover/thumb:opacity-100 transition-opacity" />
+              </button>
+            </>
           ) : (
             <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
               <span className="text-xs">No img</span>
@@ -221,11 +284,14 @@ export default function PostCard({
           <Edit2 className="w-4 h-4" />
         </button>
       </div>
+      {lightboxModal}
+      </>
     );
   }
 
   // Calendar variant - image-dominant card
   return (
+    <>
     <div
       className={`
         group relative rounded-lg overflow-hidden cursor-pointer transition-all
@@ -280,16 +346,31 @@ export default function PostCard({
           />
         </div>
 
-        {/* Edit button - appears on hover */}
-        <button
-          className="absolute bottom-2 right-2 p-1.5 rounded-md bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
-          onClick={(e) => {
-            e.stopPropagation();
-            onClick();
-          }}
-        >
-          <Edit2 className="w-4 h-4" />
-        </button>
+        {/* Action buttons - appear on hover */}
+        <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {imageUrl && (
+            <button
+              className="p-1.5 rounded-md bg-black/50 text-white hover:bg-black/70"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowLightbox(true);
+              }}
+              title="Enlarge image"
+            >
+              <ZoomIn className="w-4 h-4" />
+            </button>
+          )}
+          <button
+            className="p-1.5 rounded-md bg-black/50 text-white hover:bg-black/70"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClick();
+            }}
+            title="Edit post"
+          >
+            <Edit2 className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Info bar */}
@@ -340,5 +421,7 @@ export default function PostCard({
         )}
       </div>
     </div>
+    {lightboxModal}
+    </>
   );
 }
