@@ -127,3 +127,49 @@ export interface UserProfile {
     createdAt: Timestamp;
     updatedAt: Timestamp;
 }
+
+// Business Profile for AI context
+export type BusinessIndustry = "restaurant" | "retail";
+
+export interface BusinessProfile {
+    businessName: string;
+    industry: BusinessIndustry;
+    brandVoice?: string; // Brand voice/tone description
+    businessContext?: string; // Optional freeform context (1500-2000 char limit)
+    bannedPhrases?: string[]; // Words/phrases AI should avoid
+    updatedAt?: Timestamp;
+    updatedBy?: string; // uid
+}
+
+/**
+ * Helper to generate a compact AI context string from a business profile.
+ * This can be injected into AI prompts for more accurate generation.
+ */
+export function getBusinessContextForAI(profile: BusinessProfile | null | undefined): string {
+    if (!profile) return "";
+
+    const parts: string[] = [];
+
+    if (profile.businessName) {
+        parts.push(`Business: ${profile.businessName}`);
+    }
+
+    if (profile.industry) {
+        const industryLabel = profile.industry === "restaurant" ? "Restaurant" : "Retail";
+        parts.push(`Industry: ${industryLabel}`);
+    }
+
+    if (profile.brandVoice?.trim()) {
+        parts.push(`Brand Voice: ${profile.brandVoice.trim()}`);
+    }
+
+    if (profile.businessContext?.trim()) {
+        parts.push(`Context: ${profile.businessContext.trim()}`);
+    }
+
+    if (profile.bannedPhrases && profile.bannedPhrases.length > 0) {
+        parts.push(`Do NOT use these words/phrases: ${profile.bannedPhrases.join(", ")}`);
+    }
+
+    return parts.join("\n");
+}

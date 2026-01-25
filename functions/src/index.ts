@@ -350,9 +350,44 @@ export const importImageFromUrl = onCall<ImportImageRequest>(
 // Generate Post Copy Function
 // ============================================================================
 
-const PROMPT_VERSION = "4.0.0"; // Supports image analysis when no starter text
+const PROMPT_VERSION = "4.1.0"; // Supports industry optimization
 const MODEL_NAME_TEXT = "gpt-4o-mini"; // Text-only model (cheaper)
 const MODEL_NAME_VISION = "gpt-4o"; // Vision model for image analysis
+
+// Industry profiles for AI generation context
+type IndustryId = "restaurant" | "retail";
+
+interface IndustryProfile {
+  id: IndustryId;
+  label: string;
+  languageBias: {
+    avoidWords: string[];
+    preferredTone?: string;
+  };
+}
+
+const INDUSTRY_PROFILES: Record<IndustryId, IndustryProfile> = {
+  restaurant: {
+    id: "restaurant",
+    label: "Restaurant",
+    languageBias: {
+      avoidWords: ["indulge", "mouthwatering", "delectable", "scrumptious", "yummy"],
+      preferredTone: "warm and inviting, focusing on community and fresh ingredients",
+    },
+  },
+  retail: {
+    id: "retail",
+    label: "Retail",
+    languageBias: {
+      avoidWords: ["indulge", "splurge", "treat yourself", "must-have"],
+      preferredTone: "helpful and enthusiastic, focusing on value and quality",
+    },
+  },
+};
+
+function getIndustryProfile(industryId?: IndustryId): IndustryProfile {
+  return INDUSTRY_PROFILES[industryId || "restaurant"];
+}
 
 // Global hashtags that are automatically appended to all generated posts
 const GLOBAL_HASHTAGS = [
@@ -817,6 +852,7 @@ interface GeneratePostCopyRequest {
   emojiStyle?: "low" | "medium" | "high"; // Required for regenerate, uses workspace setting as fallback
   avoidWords?: string; // Comma-separated list of words to avoid
   avoidWordsUsage?: Record<string, number>; // Current usage counts for batch tracking
+  industry?: "restaurant" | "retail"; // Industry for optimization context
 }
 
 interface GeneratePostCopyResponse {
@@ -841,7 +877,8 @@ function buildPrompt(
   dateStr: string,
   isRegenerate: boolean = false,
   previousOutputs?: PreviousOutputs,
-  avoidWords: string[] = []
+  avoidWords: string[] = [],
+  industry?: IndustryId
 ): string {
   const hashtagCounts = {
     light: { ig: "5-8", fb: "3-5" },
@@ -871,6 +908,14 @@ function buildPrompt(
 
   const brandContext = brandVoice
     ? `\n\n**MANDATORY BRAND VOICE INSTRUCTIONS** (YOU MUST FOLLOW THESE EXACTLY):\n${brandVoice}\n\nThe above brand voice instructions are CRITICAL and MUST be followed precisely. Do not ignore them.`
+    : "";
+
+  // Build industry context if specified
+  const industryProfile = industry ? getIndustryProfile(industry) : null;
+  const industryContext = industryProfile
+    ? `\n\n**INDUSTRY CONTEXT** (${industryProfile.label}):
+- This is content for a ${industryProfile.label.toLowerCase()} business
+- Preferred tone: ${industryProfile.languageBias.preferredTone || "professional and engaging"}`
     : "";
 
   // Build avoid-words instruction if any are specified
@@ -911,7 +956,7 @@ ${avoidPhrases.join("\n")}`;
 
   return `You are a social media copywriter creating Instagram and Facebook posts.
 
-${contextInfo}${brandContext}${avoidWordsContext}${regenerateContext}
+${contextInfo}${brandContext}${industryContext}${avoidWordsContext}${regenerateContext}
 
 CRITICAL RULES:
 - Use ONLY the user-provided text above. Nothing else.
@@ -961,7 +1006,8 @@ function buildVisionPrompt(
   dateStr: string,
   isRegenerate: boolean = false,
   previousOutputs?: PreviousOutputs,
-  avoidWords: string[] = []
+  avoidWords: string[] = [],
+  industry?: IndustryId
 ): string {
   const hashtagCounts = {
     light: { ig: "5-8", fb: "3-5" },
@@ -981,6 +1027,14 @@ function buildVisionPrompt(
 
   const brandContext = brandVoice
     ? `\n\n**MANDATORY BRAND VOICE INSTRUCTIONS** (YOU MUST FOLLOW THESE EXACTLY):\n${brandVoice}\n\nThe above brand voice instructions are CRITICAL and MUST be followed precisely.`
+    : "";
+
+  // Build industry context if specified
+  const industryProfile = industry ? getIndustryProfile(industry) : null;
+  const industryContext = industryProfile
+    ? `\n\n**INDUSTRY CONTEXT** (${industryProfile.label}):
+- This is content for a ${industryProfile.label.toLowerCase()} business
+- Preferred tone: ${industryProfile.languageBias.preferredTone || "professional and engaging"}`
     : "";
 
   // Build avoid-words instruction if any are specified
@@ -1013,7 +1067,7 @@ IMPORTANT - Image Analysis Instructions:
 3. Use the visual details and any text to write relevant, specific captions
 4. If you see food/drink items, describe them appetizingly
 5. If you see promotional text or specials, incorporate that information
-6. If you see an event or atmosphere, capture that energy${brandContext}${avoidWordsContext}${regenerateContext}
+6. If you see an event or atmosphere, capture that energy${brandContext}${industryContext}${avoidWordsContext}${regenerateContext}
 
 Create engaging captions for Instagram and Facebook based on what you see in the image.
 
@@ -1048,7 +1102,8 @@ function buildHybridPrompt(
   dateStr: string,
   isRegenerate: boolean = false,
   previousOutputs?: PreviousOutputs,
-  avoidWords: string[] = []
+  avoidWords: string[] = [],
+  industry?: IndustryId
 ): string {
   const hashtagCounts = {
     light: { ig: "5-8", fb: "3-5" },
@@ -1068,6 +1123,14 @@ function buildHybridPrompt(
 
   const brandContext = brandVoice
     ? `\n\n**MANDATORY BRAND VOICE INSTRUCTIONS** (YOU MUST FOLLOW THESE EXACTLY):\n${brandVoice}\n\nThe above brand voice instructions are CRITICAL and MUST be followed precisely.`
+    : "";
+
+  // Build industry context if specified
+  const industryProfile = industry ? getIndustryProfile(industry) : null;
+  const industryContext = industryProfile
+    ? `\n\n**INDUSTRY CONTEXT** (${industryProfile.label}):
+- This is content for a ${industryProfile.label.toLowerCase()} business
+- Preferred tone: ${industryProfile.languageBias.preferredTone || "professional and engaging"}`
     : "";
 
   const avoidWordsContext = avoidWords.length > 0
@@ -1102,7 +1165,7 @@ IMPORTANT - Combined Analysis Instructions:
 3. The guidance text takes priority - it tells you the topic, promotion, or message
 4. Use visual details from the image to make the post more vivid and specific
 5. If the image shows food/drinks, describe them appetizingly in context of the guidance
-6. Incorporate any text visible in the image if relevant${brandContext}${avoidWordsContext}${regenerateContext}
+6. Incorporate any text visible in the image if relevant${brandContext}${industryContext}${avoidWordsContext}${regenerateContext}
 
 Create engaging captions for Instagram and Facebook that combine the guidance with visual appeal.
 
@@ -1256,11 +1319,36 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
       .get();
 
     const workspaceData = workspaceDoc.data() || {};
-    const brandVoice = workspaceData.settings?.ai?.brandVoice || "";
+
+    // Load AI settings
     const hashtagStyle = workspaceData.settings?.ai?.hashtagStyle || "medium";
+
+    // Load Business Profile for AI context
+    const businessProfile = workspaceData.settings?.businessProfile || {};
+    const businessName = businessProfile.businessName || "";
+    const businessContext = businessProfile.businessContext || "";
+    const businessBrandVoice = businessProfile.brandVoice || "";
+    const bannedPhrases: string[] = businessProfile.bannedPhrases || [];
+
+    // Use brand voice from business profile (preferred) or fall back to legacy ai.brandVoice
+    const legacyBrandVoice = workspaceData.settings?.ai?.brandVoice || "";
+    const brandVoice = businessBrandVoice || legacyBrandVoice;
+
+    // Build comprehensive brand voice context from business profile
+    let fullBrandContext = "";
+    if (businessName) {
+      fullBrandContext += `Business Name: ${businessName}\n`;
+    }
+    if (brandVoice) {
+      fullBrandContext += `Brand Voice: ${brandVoice}\n`;
+    }
+    if (businessContext) {
+      fullBrandContext += `About the Business: ${businessContext}\n`;
+    }
 
     // Log brand voice for debugging
     console.info(`[BrandVoice] brandVoice="${brandVoice ? brandVoice.substring(0, 100) + (brandVoice.length > 100 ? '...' : '') : '(empty)'}"`);
+    console.info(`[BusinessProfile] name="${businessName}", context=${businessContext ? "present" : "empty"}, bannedPhrases=${bannedPhrases.length}`);
 
     // SAFEGUARD: emojiStyle must be explicitly passed in the request
     // This prevents stale/cached values from being used
@@ -1288,8 +1376,23 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
     const requestAvoidWords = request.data.avoidWords;
     const workspaceAvoidWords = workspaceData.settings?.ai?.avoidWords || "indulge";
     const avoidWordsStr = requestAvoidWords !== undefined ? requestAvoidWords : workspaceAvoidWords;
-    const avoidWords = parseAvoidWords(avoidWordsStr);
 
+    // Get industry: prefer request value, fall back to workspace setting, default to "restaurant"
+    const requestIndustry = request.data.industry;
+    const workspaceIndustry = workspaceData.settings?.ai?.industry as IndustryId | undefined;
+    const industry: IndustryId = requestIndustry || workspaceIndustry || "restaurant";
+
+    // Combine user's avoidWords with industry-specific avoidWords and banned phrases from business profile
+    const industryProfile = getIndustryProfile(industry);
+    const industryAvoidWords = industryProfile.languageBias.avoidWords || [];
+    const combinedAvoidWordsSet = new Set([
+      ...parseAvoidWords(avoidWordsStr),
+      ...industryAvoidWords.map(w => w.toLowerCase()),
+      ...bannedPhrases.map(w => w.toLowerCase()),
+    ]);
+    const avoidWords = Array.from(combinedAvoidWordsSet);
+
+    console.info(`[Industry] Using industry: ${industry}`);
     console.info(`[AvoidWords] Using avoidWords: ${avoidWords.length > 0 ? avoidWords.join(", ") : "(none)"}`);
 
     // 7. Get OpenAI client
@@ -1392,16 +1495,17 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
     console.info(`[GenerateMode] effectiveMode=${effectiveMode}, hasGuidanceText=${hasGuidanceText}, hasImage=${hasImage}, useVision=${useVision}, model=${modelName}`);
 
     // Build appropriate prompt based on effective mode
+    // Use fullBrandContext which includes business name, brand voice, and about the business
     let prompt: string;
     if (effectiveMode === "hybrid" && hasGuidanceText) {
       // Hybrid mode: image + guidance text
-      prompt = buildHybridPrompt(guidanceText!, brandVoice, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs, avoidWords);
+      prompt = buildHybridPrompt(guidanceText!, fullBrandContext, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs, avoidWords, industry);
     } else if (effectiveMode === "image") {
       // Image-only mode: vision prompt
-      prompt = buildVisionPrompt(brandVoice, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs, avoidWords);
+      prompt = buildVisionPrompt(fullBrandContext, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs, avoidWords, industry);
     } else {
       // Text mode: text-only prompt (including fallback when guidance text is missing for hybrid)
-      prompt = buildPrompt(guidanceText, brandVoice, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs, avoidWords);
+      prompt = buildPrompt(guidanceText, fullBrandContext, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs, avoidWords, industry);
     }
 
     // Generate unique request ID for cache-busting and prompt variation
@@ -1427,9 +1531,9 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
           ? "EMOJI REQUIREMENT: You MUST include 2-4 emojis in each caption. This is mandatory."
           : "EMOJI REQUIREMENT: You MUST include 5-8 emojis in each caption. This is mandatory - use emojis liberally throughout!";
 
-        // Add brand voice to system message if provided
-        const brandVoiceSystemRule = brandVoice
-          ? ` BRAND VOICE REQUIREMENT: You MUST follow these brand voice instructions exactly: "${brandVoice}".`
+        // Add brand context to system message if provided
+        const brandVoiceSystemRule = fullBrandContext
+          ? ` BRAND CONTEXT REQUIREMENT: You MUST follow these business and brand instructions exactly: "${fullBrandContext.replace(/\n/g, ' ')}".`
           : "";
 
         // Build messages based on effective mode

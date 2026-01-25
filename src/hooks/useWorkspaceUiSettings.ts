@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { HashtagStyle, EmojiStyle } from "@/lib/types";
+import { IndustryId } from "@/lib/industryProfiles";
 
 interface WorkspaceUiSettings {
     hidePastUnsent: boolean;
@@ -15,6 +16,7 @@ interface WorkspaceAiSettings {
     hashtagStyle: HashtagStyle;
     emojiStyle: EmojiStyle;
     avoidWords: string; // Comma-separated list of words/phrases to avoid
+    industry: IndustryId;
 }
 
 interface WorkspaceSettings {
@@ -31,6 +33,7 @@ interface UseWorkspaceUiSettingsResult {
     setHashtagStyle: (value: HashtagStyle) => Promise<void>;
     setEmojiStyle: (value: EmojiStyle) => Promise<void>;
     setAvoidWords: (value: string) => Promise<void>;
+    setIndustry: (value: IndustryId) => Promise<void>;
 }
 
 const DEFAULT_UI_SETTINGS: WorkspaceUiSettings = {
@@ -42,6 +45,7 @@ const DEFAULT_AI_SETTINGS: WorkspaceAiSettings = {
     hashtagStyle: "medium",
     emojiStyle: "low",
     avoidWords: "indulge", // Default avoid word
+    industry: "restaurant", // Default industry
 };
 
 const LOCAL_STORAGE_KEY = "workspaceSettings";
@@ -98,6 +102,7 @@ export function useWorkspaceUiSettings(): UseWorkspaceUiSettingsResult {
                             hashtagStyle: aiData.hashtagStyle ?? DEFAULT_AI_SETTINGS.hashtagStyle,
                             emojiStyle: aiData.emojiStyle ?? DEFAULT_AI_SETTINGS.emojiStyle,
                             avoidWords: aiData.avoidWords ?? DEFAULT_AI_SETTINGS.avoidWords,
+                            industry: aiData.industry ?? DEFAULT_AI_SETTINGS.industry,
                         },
                     };
                     setSettings(newSettings);
@@ -273,6 +278,37 @@ export function useWorkspaceUiSettings(): UseWorkspaceUiSettingsResult {
         [workspaceId]
     );
 
+    // Update industry in Firestore
+    const setIndustry = useCallback(
+        async (value: IndustryId) => {
+            if (!workspaceId) return;
+
+            // Optimistic update
+            setSettings((prev) => ({
+                ...prev,
+                ai: { ...prev.ai, industry: value },
+            }));
+
+            try {
+                const workspaceRef = doc(db, "workspaces", workspaceId);
+                await setDoc(
+                    workspaceRef,
+                    {
+                        settings: {
+                            ai: {
+                                industry: value,
+                            },
+                        },
+                    },
+                    { merge: true }
+                );
+            } catch (error) {
+                console.error("Error saving industry:", error);
+            }
+        },
+        [workspaceId]
+    );
+
     return {
         settings: settings.ui,
         aiSettings: settings.ai,
@@ -282,5 +318,6 @@ export function useWorkspaceUiSettings(): UseWorkspaceUiSettingsResult {
         setHashtagStyle,
         setEmojiStyle,
         setAvoidWords,
+        setIndustry,
     };
 }

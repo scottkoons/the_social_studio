@@ -9,7 +9,7 @@ interface ConfirmModalProps {
     description: string;
     confirmText?: string;
     cancelText?: string;
-    confirmVariant?: "danger" | "primary";
+    confirmVariant?: "danger" | "warning" | "primary";
     onConfirm: () => void;
     onCancel: () => void;
 }
@@ -55,6 +55,8 @@ export default function ConfirmModal({
 
     const confirmButtonClasses = confirmVariant === "danger"
         ? "bg-red-600 hover:bg-red-700 text-white"
+        : confirmVariant === "warning"
+        ? "bg-amber-600 hover:bg-amber-700 text-white"
         : "bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] text-white dark:text-gray-900";
 
     return (

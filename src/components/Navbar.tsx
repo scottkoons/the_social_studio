@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
-import { LogOut, Layout, Calendar, FileCheck, Settings, CalendarPlus, Menu, X } from "lucide-react";
+import { LogOut, Settings, LayoutDashboard, FileText, Menu, X } from "lucide-react";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 
 export default function Navbar() {
@@ -15,11 +15,10 @@ export default function Navbar() {
 
     if (!user || pathname === "/login") return null;
 
+    // V2 Navigation: 3 items only
     const navItems = [
-        { name: "Planning", href: "/planning", icon: CalendarPlus },
-        { name: "Input", href: "/input", icon: Layout },
-        { name: "Review", href: "/review", icon: FileCheck },
-        { name: "Calendar", href: "/calendar", icon: Calendar },
+        { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+        { name: "Posts", href: "/posts", icon: FileText },
         { name: "Settings", href: "/settings", icon: Settings },
     ];
 
@@ -42,7 +41,7 @@ export default function Navbar() {
                             {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
                         </button>
 
-                        <Link href="/planning" className="flex items-center" onClick={handleNavClick}>
+                        <Link href="/dashboard" className="flex items-center" onClick={handleNavClick}>
                             <div className="relative h-7 md:h-8 w-auto">
                                 <Image
                                     src="/branding/the-social-studio-logo.png"
