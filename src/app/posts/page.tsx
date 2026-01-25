@@ -20,7 +20,12 @@ import { generatePlatformPostingTimes } from "@/lib/postingTime";
 import { useHidePastUnsent } from "@/hooks/useHidePastUnsent";
 import { useWorkspaceUiSettings } from "@/hooks/useWorkspaceUiSettings";
 import { isPostPastDue, isPastInDenver } from "@/lib/utils";
-import { Plus, Play, Download, Trash2, Sparkles, Loader2 } from "lucide-react";
+import { Plus, Play, Download, Trash2, Sparkles, Loader2, FileText, Calendar, Upload, ChevronDown } from "lucide-react";
+import CSVImport from "@/components/CSVImport";
+import PostsPdfPrintRoot from "@/components/PostsPdfPrintRoot";
+import CalendarPdfPrintRoot from "@/components/CalendarPdfPrintRoot";
+import { PostsPdfExportProgress } from "@/lib/postsPdfExport";
+import { PdfExportProgress } from "@/lib/calendarPdfExport";
 import { format, addDays } from "date-fns";
 
 const CONCURRENCY_LIMIT = 3;
@@ -57,6 +62,13 @@ export default function PostsPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
+
+  // PDF Export state
+  const [showPostsPdf, setShowPostsPdf] = useState(false);
+  const [showCalendarPdf, setShowCalendarPdf] = useState(false);
+  const [pdfIncludeImages, setPdfIncludeImages] = useState(true);
+  const [pdfProgress, setPdfProgress] = useState<string | null>(null);
 
   // Toast state
   const [toast, setToast] = useState<{ type: "success" | "warn" | "error"; message: string } | null>(null);
@@ -429,6 +441,57 @@ export default function PostsPage() {
     return filteredPosts;
   }, [selectedIds, filteredPosts]);
 
+  // PDF Export handlers
+  const handlePostsPdfProgress = useCallback((progress: PostsPdfExportProgress) => {
+    if (progress.phase === "preparing") {
+      setPdfProgress("Preparing posts...");
+    } else if (progress.phase === "rendering") {
+      setPdfProgress(`Rendering page ${progress.current} of ${progress.total}...`);
+    } else if (progress.phase === "finalizing") {
+      setPdfProgress("Finalizing PDF...");
+    }
+  }, []);
+
+  const handleCalendarPdfProgress = useCallback((progress: PdfExportProgress) => {
+    if (progress.phase === "preparing") {
+      setPdfProgress("Preparing calendar...");
+    } else if (progress.phase === "rendering") {
+      setPdfProgress(`Rendering month ${progress.current} of ${progress.total}...`);
+    } else if (progress.phase === "finalizing") {
+      setPdfProgress("Finalizing PDF...");
+    }
+  }, []);
+
+  const handlePdfComplete = useCallback((warning?: string) => {
+    setShowPostsPdf(false);
+    setShowCalendarPdf(false);
+    setPdfProgress(null);
+    if (warning) {
+      showToast("warn", `PDF exported. ${warning}`);
+    } else {
+      showToast("success", "PDF exported successfully");
+    }
+  }, [showToast]);
+
+  const handlePdfError = useCallback((error: string) => {
+    setShowPostsPdf(false);
+    setShowCalendarPdf(false);
+    setPdfProgress(null);
+    showToast("error", `PDF export failed: ${error}`);
+  }, [showToast]);
+
+  const startPostsPdfExport = useCallback((includeImages: boolean) => {
+    setPdfIncludeImages(includeImages);
+    setShowPostsPdf(true);
+    setShowExportDropdown(false);
+  }, []);
+
+  const startCalendarPdfExport = useCallback((includeImages: boolean) => {
+    setPdfIncludeImages(includeImages);
+    setShowCalendarPdf(true);
+    setShowExportDropdown(false);
+  }, []);
+
   // Batch action bar actions
   const batchActions = [
     {
@@ -504,14 +567,69 @@ export default function PostsPage() {
             Generate {selectedIds.size > 0 ? "Selected" : "All"}
           </button>
 
-          <button
-            onClick={() => setShowExportModal(true)}
-            disabled={filteredPosts.length === 0}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-emerald-500 hover:bg-emerald-600 rounded-lg transition-colors disabled:opacity-50"
-          >
-            <Download className="w-4 h-4" />
-            Export
-          </button>
+          {/* Export Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowExportDropdown(!showExportDropdown)}
+              disabled={filteredPosts.length === 0}
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-emerald-500 hover:bg-emerald-600 rounded-lg transition-colors disabled:opacity-50"
+            >
+              <Download className="w-4 h-4" />
+              Export
+              <ChevronDown className="w-3 h-3" />
+            </button>
+
+            {showExportDropdown && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowExportDropdown(false)}
+                />
+                <div className="absolute right-0 mt-2 w-56 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg shadow-lg z-50 py-1">
+                  <button
+                    onClick={() => {
+                      setShowExportModal(true);
+                      setShowExportDropdown(false);
+                    }}
+                    className="w-full px-4 py-2 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
+                  >
+                    <Download className="w-4 h-4 text-[var(--text-tertiary)]" />
+                    Export CSV for Buffer
+                  </button>
+                  <div className="border-t border-[var(--border-secondary)] my-1" />
+                  <button
+                    onClick={() => startPostsPdfExport(true)}
+                    className="w-full px-4 py-2 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
+                  >
+                    <FileText className="w-4 h-4 text-[var(--text-tertiary)]" />
+                    Posts PDF (with images)
+                  </button>
+                  <button
+                    onClick={() => startPostsPdfExport(false)}
+                    className="w-full px-4 py-2 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
+                  >
+                    <FileText className="w-4 h-4 text-[var(--text-tertiary)]" />
+                    Posts PDF (text only)
+                  </button>
+                  <div className="border-t border-[var(--border-secondary)] my-1" />
+                  <button
+                    onClick={() => startCalendarPdfExport(true)}
+                    className="w-full px-4 py-2 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
+                  >
+                    <Calendar className="w-4 h-4 text-[var(--text-tertiary)]" />
+                    Calendar PDF (with images)
+                  </button>
+                  <button
+                    onClick={() => startCalendarPdfExport(false)}
+                    className="w-full px-4 py-2 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
+                  >
+                    <Calendar className="w-4 h-4 text-[var(--text-tertiary)]" />
+                    Calendar PDF (text only)
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -583,6 +701,52 @@ export default function PostsPage() {
         onCancel={() => setShowDeleteModal(false)}
         confirmVariant="danger"
       />
+
+      {/* CSV Import Section */}
+      <div className="mt-6">
+        <Surface bordered padding="md">
+          <div className="flex items-center gap-3 mb-3">
+            <Upload className="w-4 h-4 text-[var(--text-secondary)]" />
+            <h3 className="text-sm font-medium text-[var(--text-primary)]">Import Posts</h3>
+          </div>
+          <CSVImport />
+        </Surface>
+      </div>
+
+      {/* PDF Export Components (rendered offscreen) */}
+      {showPostsPdf && workspaceId && (
+        <PostsPdfPrintRoot
+          posts={getPostsForExport()}
+          workspaceId={workspaceId}
+          includeImages={pdfIncludeImages}
+          onComplete={handlePdfComplete}
+          onError={handlePdfError}
+          onProgress={handlePostsPdfProgress}
+        />
+      )}
+
+      {showCalendarPdf && workspaceId && (
+        <CalendarPdfPrintRoot
+          posts={getPostsForExport()}
+          workspaceId={workspaceId}
+          includeImages={pdfIncludeImages}
+          onComplete={handlePdfComplete}
+          onError={handlePdfError}
+          onProgress={handleCalendarPdfProgress}
+        />
+      )}
+
+      {/* PDF Progress Overlay */}
+      {pdfProgress && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-[var(--bg-secondary)] rounded-xl shadow-lg p-6 max-w-sm w-full mx-4">
+            <div className="flex items-center gap-3">
+              <Loader2 className="w-5 h-5 animate-spin text-[var(--accent-primary)]" />
+              <p className="text-sm text-[var(--text-primary)]">{pdfProgress}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       {toast && (
