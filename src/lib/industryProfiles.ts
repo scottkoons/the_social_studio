@@ -140,8 +140,8 @@ export const INDUSTRY_PROFILES: Record<BusinessTypeId, IndustryProfile> = {
 /**
  * Get default posting frequency for a business type (uses HIGH end)
  */
-export function getDefaultPostingFrequency(businessTypeId: BusinessTypeId): { ig: number; fb: number } {
-  const profile = INDUSTRY_PROFILES[businessTypeId];
+export function getDefaultPostingFrequency(businessTypeId?: string): { ig: number; fb: number } {
+  const profile = getIndustryProfile(businessTypeId);
   return {
     ig: profile.postingFrequency.ig.max,
     fb: profile.postingFrequency.fb.max,
@@ -150,9 +150,14 @@ export function getDefaultPostingFrequency(businessTypeId: BusinessTypeId): { ig
 
 /**
  * Get business type profile by ID, with fallback to restaurant
+ * Handles invalid/legacy values by returning restaurant profile
  */
-export function getIndustryProfile(businessTypeId?: BusinessTypeId): IndustryProfile {
-  return INDUSTRY_PROFILES[businessTypeId || "restaurant"];
+export function getIndustryProfile(businessTypeId?: string): IndustryProfile {
+  // Handle undefined, null, or invalid values by falling back to restaurant
+  if (!businessTypeId || !(businessTypeId in INDUSTRY_PROFILES)) {
+    return INDUSTRY_PROFILES.restaurant;
+  }
+  return INDUSTRY_PROFILES[businessTypeId as BusinessTypeId];
 }
 
 // Alias for clarity
@@ -182,11 +187,11 @@ export function isWeekend(dayOfWeek: number): boolean {
  * Get appropriate time window for a given day and platform
  */
 export function getTimeWindowForDay(
-  businessTypeId: BusinessTypeId,
+  businessTypeId: string | undefined,
   platform: "ig" | "fb",
   dayOfWeek: number
 ): TimeWindow {
-  const profile = INDUSTRY_PROFILES[businessTypeId || "restaurant"];
+  const profile = getIndustryProfile(businessTypeId);
   const windows = profile.timeWindows[platform];
   const dayType = isWeekend(dayOfWeek) ? "weekend" : "weekday";
 
@@ -205,15 +210,15 @@ export function getTimeWindowForDay(
 /**
  * Check if a day is preferred for this business type
  */
-export function isPreferredDay(businessTypeId: BusinessTypeId, dayOfWeek: number): boolean {
-  const profile = INDUSTRY_PROFILES[businessTypeId || "restaurant"];
+export function isPreferredDay(businessTypeId: string | undefined, dayOfWeek: number): boolean {
+  const profile = getIndustryProfile(businessTypeId);
   return profile.preferredDays.includes(dayOfWeek);
 }
 
 /**
  * Check if a day is a "light" day (Mon/Tue typically)
  */
-export function isLightDay(businessTypeId: BusinessTypeId, dayOfWeek: number): boolean {
-  const profile = INDUSTRY_PROFILES[businessTypeId || "restaurant"];
+export function isLightDay(businessTypeId: string | undefined, dayOfWeek: number): boolean {
+  const profile = getIndustryProfile(businessTypeId);
   return profile.lightDays.includes(dayOfWeek);
 }
