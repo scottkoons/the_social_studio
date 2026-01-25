@@ -8,7 +8,7 @@ import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { FileDown, AlertCircle, Check, X, Image as ImageIcon, ChevronDown, ChevronUp, AlertTriangle, Upload } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { parseCsvDate, formatDisplayDate } from "@/lib/utils";
+import { parseCsvDate, formatDisplayDate, isPastInDenver, getTodayInDenver } from "@/lib/utils";
 import { generatePlatformPostingTimes } from "@/lib/postingTime";
 
 // ============================================================================
@@ -103,6 +103,11 @@ interface DateParseError {
     rowIndex: number;
     rawDate: string;
     reason: string;
+}
+
+interface PastDateError {
+    rowIndex: number;
+    date: string;
 }
 
 export default function CSVImport() {
@@ -222,6 +227,33 @@ export default function CSVImport() {
                 const newRows: ParsedRow[] = [];
                 const duplicateRows: DuplicateInfo[] = [];
                 const processedDates = new Set<string>();
+
+                // First pass: Check for past dates
+                const pastDateErrors: PastDateError[] = [];
+                const today = getTodayInDenver();
+
+                for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
+                    const row = data[rowIndex];
+                    const rawDate = row.date || row.Date || row["Posting Time"] || "";
+                    if (!rawDate || !rawDate.trim()) continue;
+
+                    const date = parseCsvDate(rawDate);
+                    if (date && isPastInDenver(date)) {
+                        pastDateErrors.push({ rowIndex: rowIndex + 2, date });
+                    }
+                }
+
+                // Reject entire CSV if any past dates found
+                if (pastDateErrors.length > 0) {
+                    const examples = pastDateErrors.slice(0, 3).map(e => `row ${e.rowIndex}: ${e.date}`).join(', ');
+                    const moreText = pastDateErrors.length > 3 ? `, and ${pastDateErrors.length - 3} more` : '';
+                    setStatus({
+                        type: 'error',
+                        message: `CSV rejected: ${pastDateErrors.length} row${pastDateErrors.length !== 1 ? 's' : ''} contain past dates (${examples}${moreText}). Remove or update those dates and re-upload. Today is ${today}.`
+                    });
+                    setIsImporting(false);
+                    return;
+                }
 
                 for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
                     const row = data[rowIndex];

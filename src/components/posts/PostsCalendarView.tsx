@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Lock } from "lucide-react";
 import { format, startOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, isSameMonth } from "date-fns";
 import PostCard from "./PostCard";
 import { PostDay, getPostDocId } from "@/lib/types";
@@ -21,6 +21,7 @@ interface PostsCalendarViewProps {
   onSelectPost: (docId: string, selected: boolean) => void;
   onPostClick: (post: PostDay) => void;
   onEmptyDayClick: (date: string) => void;
+  onPastDateBlocked?: () => void; // Called when user tries to interact with past date
 }
 
 export default function PostsCalendarView({
@@ -32,6 +33,7 @@ export default function PostsCalendarView({
   onSelectPost,
   onPostClick,
   onEmptyDayClick,
+  onPastDateBlocked,
 }: PostsCalendarViewProps) {
   // Drag-and-drop state
   const [draggingPost, setDraggingPost] = useState<PostDay | null>(null);
@@ -105,9 +107,10 @@ export default function PostsCalendarView({
     const fromDocId = getPostDocId(draggingPost);
     const today = getTodayInDenver();
 
-    // Validation
+    // Block dropping on past dates
     if (targetDate < today) {
       handleDragEnd();
+      onPastDateBlocked?.();
       return;
     }
     if (targetDate === draggingPost.date) {
@@ -219,7 +222,14 @@ export default function PostsCalendarView({
               selectedIds={selectedIds}
               onSelectPost={onSelectPost}
               onPostClick={onPostClick}
-              onEmptyClick={() => onEmptyDayClick(dateStr)}
+              onEmptyClick={() => {
+                if (isPast) {
+                  onPastDateBlocked?.();
+                } else {
+                  onEmptyDayClick(dateStr);
+                }
+              }}
+              onPastDateBlocked={onPastDateBlocked}
               isDragging={!!draggingPost}
               isDropTarget={dropTargetDate === dateStr}
               canDrop={!!draggingPost && dateStr !== draggingPost.date && dateStr >= getTodayInDenver()}
@@ -259,6 +269,7 @@ interface DayCellProps {
   onSelectPost: (docId: string, selected: boolean) => void;
   onPostClick: (post: PostDay) => void;
   onEmptyClick: () => void;
+  onPastDateBlocked?: () => void;
   // Drag-and-drop props
   isDragging: boolean;
   isDropTarget: boolean;
@@ -282,6 +293,7 @@ function DayCell({
   onSelectPost,
   onPostClick,
   onEmptyClick,
+  onPastDateBlocked,
   isDragging,
   isDropTarget,
   canDrop,
@@ -314,39 +326,59 @@ function DayCell({
     }
   };
 
+  // Handle click on past empty cell
+  const handleEmptyPastClick = () => {
+    if (isPast) {
+      onPastDateBlocked?.();
+    } else {
+      onEmptyClick();
+    }
+  };
+
   return (
     <div
       className={`
         group relative min-h-[120px] md:min-h-[140px] p-2 border-b border-r border-[var(--border-secondary)]
         transition-colors
         ${isCurrentMonth ? "bg-[var(--bg-secondary)]" : "bg-[var(--bg-primary)]"}
-        ${isPast && isCurrentMonth ? "opacity-70" : ""}
+        ${isPast && isCurrentMonth ? "bg-[var(--bg-primary)] opacity-60" : ""}
         ${isDropTarget && canDrop ? "bg-[var(--accent-primary)]/10 ring-2 ring-inset ring-[var(--accent-primary)]" : ""}
         ${isDragging && !canDrop && !isPast ? "opacity-50" : ""}
+        ${isPast ? "cursor-not-allowed" : ""}
       `}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Day number */}
+      {/* Day number and Past badge */}
       <div className="flex items-center justify-between mb-2">
-        <span
-          className={`
-            inline-flex items-center justify-center w-7 h-7 text-sm font-medium rounded-full
-            ${isToday ? "bg-[var(--accent-primary)] text-white" : ""}
-            ${!isToday && isCurrentMonth ? "text-[var(--text-primary)]" : ""}
-            ${!isToday && !isCurrentMonth ? "text-[var(--text-muted)]" : ""}
-          `}
-        >
-          {format(date, "d")}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span
+            className={`
+              inline-flex items-center justify-center w-7 h-7 text-sm font-medium rounded-full
+              ${isToday ? "bg-[var(--accent-primary)] text-white" : ""}
+              ${!isToday && isCurrentMonth && !isPast ? "text-[var(--text-primary)]" : ""}
+              ${!isToday && isCurrentMonth && isPast ? "text-[var(--text-muted)]" : ""}
+              ${!isToday && !isCurrentMonth ? "text-[var(--text-muted)]" : ""}
+            `}
+          >
+            {format(date, "d")}
+          </span>
+          {/* Past badge */}
+          {isPast && isCurrentMonth && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+              <Lock className="w-2.5 h-2.5" />
+              Past
+            </span>
+          )}
+        </div>
 
-        {/* Add button - appears on hover when no posts */}
-        {!hasPosts && isCurrentMonth && (
+        {/* Add button - appears on hover when no posts and not past */}
+        {!hasPosts && isCurrentMonth && !isPast && (
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onEmptyClick();
+              handleEmptyPastClick();
             }}
             className="p-1 rounded-md hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] opacity-0 group-hover:opacity-100 transition-all"
             aria-label="Add post"
@@ -378,14 +410,26 @@ function DayCell({
         </div>
       )}
 
-      {/* Empty state - clickable */}
-      {!hasPosts && isCurrentMonth && (
+      {/* Empty state - clickable (only for non-past dates) */}
+      {!hasPosts && isCurrentMonth && !isPast && (
         <div
-          onClick={onEmptyClick}
+          onClick={handleEmptyPastClick}
           className="h-16 flex items-center justify-center rounded-md border-2 border-dashed border-transparent hover:border-[var(--border-primary)] cursor-pointer transition-colors group-hover:border-[var(--border-primary)]"
         >
           <span className="text-xs text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity">
             Click to add
+          </span>
+        </div>
+      )}
+
+      {/* Past date empty state - not clickable */}
+      {!hasPosts && isCurrentMonth && isPast && (
+        <div
+          onClick={() => onPastDateBlocked?.()}
+          className="h-16 flex items-center justify-center rounded-md cursor-not-allowed"
+        >
+          <span className="text-[10px] text-[var(--text-muted)] italic">
+            Not schedulable
           </span>
         </div>
       )}

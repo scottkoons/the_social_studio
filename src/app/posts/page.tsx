@@ -19,7 +19,7 @@ import { PostDay, getPostDocId, GenerationMode, EmojiStyle } from "@/lib/types";
 import { generatePlatformPostingTimes } from "@/lib/postingTime";
 import { useHidePastUnsent } from "@/hooks/useHidePastUnsent";
 import { useWorkspaceUiSettings } from "@/hooks/useWorkspaceUiSettings";
-import { isPostPastDue } from "@/lib/utils";
+import { isPostPastDue, isPastInDenver } from "@/lib/utils";
 import { Plus, Play, Download, Trash2, Sparkles, Loader2 } from "lucide-react";
 import { format, addDays } from "date-fns";
 
@@ -195,10 +195,21 @@ export default function PostsPage() {
     setSelectedPostImageUrl(null);
   }, []);
 
+  // Past date blocked callback
+  const handlePastDateBlocked = useCallback(() => {
+    showToast("warn", "Past dates can't be scheduled. Pick today or a future date.");
+  }, [showToast]);
+
   // Empty day click - create new post
   const handleEmptyDayClick = useCallback(
     async (dateStr: string) => {
       if (!workspaceId || isAdding) return;
+
+      // Block creating posts on past dates
+      if (isPastInDenver(dateStr)) {
+        handlePastDateBlocked();
+        return;
+      }
 
       setIsAdding(true);
 
@@ -226,7 +237,7 @@ export default function PostsPage() {
         setIsAdding(false);
       }
     },
-    [workspaceId, isAdding, showToast]
+    [workspaceId, isAdding, showToast, handlePastDateBlocked]
   );
 
   // Add new post (for button)
@@ -522,6 +533,7 @@ export default function PostsPage() {
           onSelectPost={handleSelectPost}
           onPostClick={handlePostClick}
           onEmptyDayClick={handleEmptyDayClick}
+          onPastDateBlocked={handlePastDateBlocked}
         />
       ) : (
         <PostsListView

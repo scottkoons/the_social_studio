@@ -118,6 +118,16 @@ export function isPastOrTodayInDenver(dateStr: string): boolean {
 }
 
 /**
+ * Checks if a YYYY-MM-DD string is STRICTLY in the past (before today) in Denver timezone.
+ * Today is NOT considered past - this is the main check for "no past-dated posts" rules.
+ * Use this for blocking post creation, moves, and edits on past dates.
+ */
+export function isPastInDenver(dateStr: string): boolean {
+    const todayStr = getTodayInDenver();
+    return dateStr < todayStr;
+}
+
+/**
  * Checks if a post's date/time has passed in Denver timezone.
  * - If date is before today: past due
  * - If date is after today: not past due

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
-import { Trash2, Copy, Upload, Loader2, Sparkles, Check, Instagram, Facebook, X, ZoomIn, Info } from "lucide-react";
+import { Trash2, Copy, Upload, Loader2, Sparkles, Check, Instagram, Facebook, X, ZoomIn, Info, Lock } from "lucide-react";
 import SlidePanel from "@/components/ui/SlidePanel";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import AIModeBadge from "@/components/ui/AIModeBadge";
@@ -14,7 +14,7 @@ import { doc, updateDoc, deleteDoc, setDoc, getDoc, serverTimestamp, deleteField
 import { httpsCallable } from "firebase/functions";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useDropzone } from "react-dropzone";
-import { normalizeHashtagsArray, appendGlobalHashtags, formatDisplayDate } from "@/lib/utils";
+import { normalizeHashtagsArray, appendGlobalHashtags, formatDisplayDate, isPastInDenver, getTodayInDenver } from "@/lib/utils";
 import { randomTimeInWindow5Min } from "@/lib/postingTime";
 
 interface GeneratePostCopyResponse {
@@ -145,6 +145,8 @@ export default function PostDetailPanel({
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
       if (acceptedFiles.length === 0 || !post || !workspaceId) return;
+      // Block image upload for past posts
+      if (isPastInDenver(post.date)) return;
 
       const file = acceptedFiles[0];
       setLocalImageUrl(URL.createObjectURL(file));
@@ -188,11 +190,14 @@ export default function PostDetailPanel({
     [post, workspaceId]
   );
 
+  const isImageUploadDisabled = isPastInDenver(post?.date || "");
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: { "image/*": [] },
     multiple: false,
     useFsAccessApi: false,
+    disabled: isImageUploadDisabled,
   });
 
   const handleRemoveImage = async () => {
@@ -322,6 +327,12 @@ export default function PostDetailPanel({
   const handleDuplicate = async () => {
     if (!post || !workspaceId || !duplicateDate) return;
 
+    // Validate that target date is not in the past
+    if (isPastInDenver(duplicateDate)) {
+      alert("Cannot duplicate to a past date. Please select today or a future date.");
+      return;
+    }
+
     setIsDuplicating(true);
 
     try {
@@ -370,6 +381,7 @@ export default function PostDetailPanel({
   if (!post) return null;
 
   const currentStatusIndex = statusSteps.findIndex((s) => s.key === post.status);
+  const isPastPost = isPastInDenver(post.date);
 
   return (
     <>
@@ -380,6 +392,21 @@ export default function PostDetailPanel({
         width="lg"
       >
         <div className="flex flex-col h-full">
+          {/* Past date warning banner */}
+          {isPastPost && (
+            <div className="px-6 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
+              <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                <Lock className="w-4 h-4 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium">This date has passed</p>
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    Posts cannot be scheduled in the past. Image uploads are disabled.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Save indicator & AI mode badge */}
           <div className="px-6 py-2 border-b border-[var(--border-secondary)] flex items-center justify-between text-xs">
             <span className="text-[var(--text-tertiary)]">
@@ -430,25 +457,41 @@ export default function PostDetailPanel({
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-2">
-                    <div {...getRootProps()} className="flex-1">
-                      <input {...getInputProps()} />
+                  {/* Image action buttons - disabled for past posts */}
+                  {!isPastPost ? (
+                    <div className="flex gap-2">
+                      <div {...getRootProps()} className="flex-1">
+                        <input {...getInputProps()} />
+                        <button
+                          type="button"
+                          disabled={isUploadingImage}
+                          className="w-full px-3 py-2 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] hover:bg-[var(--bg-card-hover)] rounded-md transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          <Upload className="w-4 h-4" />
+                          Replace
+                        </button>
+                      </div>
                       <button
-                        type="button"
+                        onClick={handleRemoveImage}
                         disabled={isUploadingImage}
-                        className="w-full px-3 py-2 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] hover:bg-[var(--bg-card-hover)] rounded-md transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                        className="px-3 py-2 text-sm font-medium text-[var(--status-error)] hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors disabled:opacity-50"
                       >
-                        <Upload className="w-4 h-4" />
-                        Replace
+                        Remove
                       </button>
                     </div>
-                    <button
-                      onClick={handleRemoveImage}
-                      disabled={isUploadingImage}
-                      className="px-3 py-2 text-sm font-medium text-[var(--status-error)] hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors disabled:opacity-50"
-                    >
-                      Remove
-                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Image changes disabled for past dates</span>
+                    </div>
+                  )}
+                </div>
+              ) : isPastPost ? (
+                /* Disabled upload for past posts */
+                <div className="aspect-video rounded-lg border-2 border-dashed border-[var(--border-primary)] bg-[var(--bg-tertiary)] flex items-center justify-center cursor-not-allowed opacity-60">
+                  <div className="text-center">
+                    <Lock className="mx-auto mb-2 text-[var(--text-muted)]" size={32} />
+                    <p className="text-sm text-[var(--text-muted)]">Image upload disabled for past dates</p>
                   </div>
                 </div>
               ) : (
@@ -685,9 +728,13 @@ export default function PostDetailPanel({
               <input
                 type="date"
                 value={duplicateDate}
+                min={getTodayInDenver()}
                 onChange={(e) => setDuplicateDate(e.target.value)}
                 className="w-full px-3 py-2 border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg text-sm"
               />
+              <p className="text-xs text-[var(--text-tertiary)] mt-2">
+                Only today and future dates can be selected
+              </p>
             </div>
             <div className="px-5 py-4 bg-[var(--bg-primary)] flex justify-end gap-2">
               <button
