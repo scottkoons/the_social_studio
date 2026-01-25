@@ -597,7 +597,7 @@ export default function PostsPage() {
             Generate {selectedIds.size > 0 ? "Selected" : "All"}
           </button>
 
-          {/* Export Dropdown */}
+          {/* Download Dropdown */}
           <div className="relative">
             <button
               onClick={() => setShowExportDropdown(!showExportDropdown)}
@@ -605,7 +605,7 @@ export default function PostsPage() {
               className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors disabled:opacity-50"
             >
               <Download className="w-4 h-4" />
-              Export
+              Download
               <ChevronDown className="w-3 h-3" />
             </button>
 
@@ -621,7 +621,7 @@ export default function PostsPage() {
                     className="w-full px-4 py-2 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
                   >
                     <FileText className="w-4 h-4 text-[var(--text-tertiary)]" />
-                    Export CSV (editable)
+                    Spreadsheet (.csv)
                   </button>
                   <div className="border-t border-[var(--border-secondary)] my-1" />
                   <button
