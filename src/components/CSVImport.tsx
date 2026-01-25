@@ -539,23 +539,20 @@ export default function CSVImport() {
                     rowsWithImagesRef.current.push(duplicate.row);
                 }
             } else if (action === "overwrite") {
-                const postingTimes = generatePlatformPostingTimes(duplicate.row.date, duplicate.row.date);
-                await setDoc(docRef, {
+                // Update date and starterText, preserve existing image and other fields
+                const updates: Record<string, unknown> = {
                     date: duplicate.row.date,
                     starterText: duplicate.row.starterText,
-                    postingTimeIg: postingTimes.ig,
-                    postingTimeFb: postingTimes.fb,
-                    postingTimeIgSource: "auto",
-                    postingTimeFbSource: "auto",
-                    status: "input",
-                    createdAt: duplicate.existingData.createdAt || serverTimestamp(),
                     updatedAt: serverTimestamp(),
-                }, { merge: false });
-                countersRef.current.overwritten++;
+                };
 
-                if (duplicate.row.imageUrl) {
+                // Only import new image if CSV has imageUrl AND post doesn't already have an image
+                if (duplicate.row.imageUrl && !duplicate.existingData.imageAssetId) {
                     rowsWithImagesRef.current.push(duplicate.row);
                 }
+
+                await setDoc(docRef, updates, { merge: true });
+                countersRef.current.overwritten++;
             } else if (action === "overwrite-empty") {
                 const updates: Record<string, unknown> = { updatedAt: serverTimestamp() };
 

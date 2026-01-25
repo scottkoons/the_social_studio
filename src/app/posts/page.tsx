@@ -493,18 +493,17 @@ export default function PostsPage() {
   }, []);
 
   // Export editable CSV (compatible with CSVImport)
+  // Only exports date and starterText - images are preserved on re-import
   const exportEditableCsv = useCallback(() => {
     const postsToExport = getPostsForExport();
     if (postsToExport.length === 0) return;
 
-    // Build CSV with columns that CSVImport expects
-    const headers = ["date", "starterText", "imageUrl"];
+    // Build CSV with date and starterText only (images preserved on re-import)
+    const headers = ["date", "starterText"];
     const rows = postsToExport.map((post) => {
-      const imageUrl = post.imageAssetId ? imageUrls.get(post.imageAssetId) || "" : "";
       return [
         post.date,
         `"${(post.starterText || "").replace(/"/g, '""')}"`, // Escape quotes
-        imageUrl,
       ].join(",");
     });
 
@@ -521,7 +520,7 @@ export default function PostsPage() {
 
     setShowExportDropdown(false);
     showToast("success", `Exported ${postsToExport.length} posts to CSV`);
-  }, [getPostsForExport, imageUrls, showToast]);
+  }, [getPostsForExport, showToast]);
 
   // Batch action bar actions
   const batchActions = [
