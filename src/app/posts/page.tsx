@@ -602,7 +602,7 @@ export default function PostsPage() {
             <button
               onClick={() => setShowExportDropdown(!showExportDropdown)}
               disabled={filteredPosts.length === 0}
-              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-emerald-500 hover:bg-emerald-600 rounded-lg transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors disabled:opacity-50"
             >
               <Download className="w-4 h-4" />
               Export
@@ -622,16 +622,6 @@ export default function PostsPage() {
                   >
                     <FileText className="w-4 h-4 text-[var(--text-tertiary)]" />
                     Export CSV (editable)
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowExportModal(true);
-                      setShowExportDropdown(false);
-                    }}
-                    className="w-full px-4 py-2 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
-                  >
-                    <Download className="w-4 h-4 text-[var(--text-tertiary)]" />
-                    Export CSV for Buffer
                   </button>
                   <div className="border-t border-[var(--border-secondary)] my-1" />
                   <button
@@ -660,6 +650,16 @@ export default function PostsPage() {
               </>
             )}
           </div>
+
+          {/* Export for Buffer - separate button */}
+          <button
+            onClick={() => setShowExportModal(true)}
+            disabled={filteredPosts.length === 0}
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-emerald-500 hover:bg-emerald-600 rounded-lg transition-colors disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" />
+            Export for Buffer
+          </button>
         </div>
       </div>
 
