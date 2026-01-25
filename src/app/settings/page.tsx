@@ -9,7 +9,8 @@ import Surface from "@/components/ui/Surface";
 import Toast from "@/components/ui/Toast";
 import { Check, EyeOff, Hash, Smile, Ban, Building2, Store, RotateCcw, Save, Loader2 } from "lucide-react";
 import { HashtagStyle, EmojiStyle, BusinessProfile, BusinessIndustry } from "@/lib/types";
-import { BusinessTypeId, getBusinessTypeOptions } from "@/lib/industryProfiles";
+import { BusinessTypeId, getBusinessTypeOptions, getIndustryProfile } from "@/lib/industryProfiles";
+import WhyThisWorks from "@/components/ui/WhyThisWorks";
 
 const BUSINESS_CONTEXT_MAX_LENGTH = 2000;
 const BUSINESS_INDUSTRY_OPTIONS: { value: BusinessIndustry; label: string }[] = [
@@ -665,6 +666,9 @@ export default function SettingsPage() {
             </div>
           )}
         </Surface>
+
+        {/* AI Transparency - Why This Works */}
+        <WhyThisWorks industry={getIndustryProfile(aiSettings.businessType)} />
       </div>
 
       {/* Toast */}
