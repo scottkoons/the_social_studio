@@ -23,8 +23,8 @@ export default function DashboardPage() {
   const [posts, setPosts] = useState<PostDay[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Get industry profile for display
-  const industryProfile = getIndustryProfile(aiSettings.industry);
+  // Get business type profile for display
+  const businessTypeProfile = getIndustryProfile(aiSettings.businessType);
 
   // Load posts
   useEffect(() => {
@@ -170,7 +170,7 @@ export default function DashboardPage() {
           {/* Industry Badge */}
           <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 rounded-full text-sm">
             <Building2 className="w-4 h-4" />
-            <span>Optimized for: <span className="font-medium">{industryProfile.label}</span></span>
+            <span>Optimized for: <span className="font-medium">{businessTypeProfile.label}</span></span>
           </div>
         </div>
       </div>
@@ -271,7 +271,7 @@ export default function DashboardPage() {
           </Surface>
 
           {/* AI Transparency - Why This Works */}
-          <WhyThisWorks industry={industryProfile} />
+          <WhyThisWorks industry={businessTypeProfile} />
         </div>
       )}
     </div>

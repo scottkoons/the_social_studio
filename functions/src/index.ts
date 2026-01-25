@@ -852,7 +852,8 @@ interface GeneratePostCopyRequest {
   emojiStyle?: "low" | "medium" | "high"; // Required for regenerate, uses workspace setting as fallback
   avoidWords?: string; // Comma-separated list of words to avoid
   avoidWordsUsage?: Record<string, number>; // Current usage counts for batch tracking
-  industry?: "restaurant" | "retail"; // Industry for optimization context
+  businessType?: IndustryId; // Business type for optimization context
+  industry?: IndustryId; // Legacy field - use businessType instead
 }
 
 interface GeneratePostCopyResponse {
@@ -1377,22 +1378,26 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
     const workspaceAvoidWords = workspaceData.settings?.ai?.avoidWords || "indulge";
     const avoidWordsStr = requestAvoidWords !== undefined ? requestAvoidWords : workspaceAvoidWords;
 
-    // Get industry: prefer request value, fall back to workspace setting, default to "restaurant"
-    const requestIndustry = request.data.industry;
-    const workspaceIndustry = workspaceData.settings?.ai?.industry as IndustryId | undefined;
-    const industry: IndustryId = requestIndustry || workspaceIndustry || "restaurant";
+    // Get businessType: prefer request value, fall back to workspace businessType, then legacy industry, default to "restaurant"
+    const requestBusinessType = request.data.businessType || request.data.industry;
+    const workspaceBusinessType = workspaceData.settings?.ai?.businessType as IndustryId | undefined;
+    const workspaceIndustry = workspaceData.settings?.ai?.industry as IndustryId | undefined; // Legacy fallback
+    const businessType: IndustryId = requestBusinessType || workspaceBusinessType || workspaceIndustry || "restaurant";
 
-    // Combine user's avoidWords with industry-specific avoidWords and banned phrases from business profile
-    const industryProfile = getIndustryProfile(industry);
-    const industryAvoidWords = industryProfile.languageBias.avoidWords || [];
+    // Get strictGuidance setting (default: true)
+    const strictGuidance = workspaceData.settings?.ai?.strictGuidance !== false;
+
+    // Combine user's avoidWords with business type avoidWords and banned phrases from business profile
+    const businessTypeProfile = getIndustryProfile(businessType);
+    const businessTypeAvoidWords = strictGuidance ? (businessTypeProfile.languageBias.avoidWords || []) : [];
     const combinedAvoidWordsSet = new Set([
       ...parseAvoidWords(avoidWordsStr),
-      ...industryAvoidWords.map(w => w.toLowerCase()),
+      ...businessTypeAvoidWords.map(w => w.toLowerCase()),
       ...bannedPhrases.map(w => w.toLowerCase()),
     ]);
     const avoidWords = Array.from(combinedAvoidWordsSet);
 
-    console.info(`[Industry] Using industry: ${industry}`);
+    console.info(`[BusinessType] Using businessType: ${businessType}, strictGuidance: ${strictGuidance}`);
     console.info(`[AvoidWords] Using avoidWords: ${avoidWords.length > 0 ? avoidWords.join(", ") : "(none)"}`);
 
     // 7. Get OpenAI client
@@ -1499,13 +1504,13 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
     let prompt: string;
     if (effectiveMode === "hybrid" && hasGuidanceText) {
       // Hybrid mode: image + guidance text
-      prompt = buildHybridPrompt(guidanceText!, fullBrandContext, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs, avoidWords, industry);
+      prompt = buildHybridPrompt(guidanceText!, fullBrandContext, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs, avoidWords, businessType);
     } else if (effectiveMode === "image") {
       // Image-only mode: vision prompt
-      prompt = buildVisionPrompt(fullBrandContext, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs, avoidWords, industry);
+      prompt = buildVisionPrompt(fullBrandContext, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs, avoidWords, businessType);
     } else {
       // Text mode: text-only prompt (including fallback when guidance text is missing for hybrid)
-      prompt = buildPrompt(guidanceText, fullBrandContext, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs, avoidWords, industry);
+      prompt = buildPrompt(guidanceText, fullBrandContext, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs, avoidWords, businessType);
     }
 
     // Generate unique request ID for cache-busting and prompt variation

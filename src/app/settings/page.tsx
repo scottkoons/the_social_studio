@@ -9,7 +9,7 @@ import Surface from "@/components/ui/Surface";
 import Toast from "@/components/ui/Toast";
 import { Check, EyeOff, Hash, Smile, Ban, Building2, Store, RotateCcw, Save, Loader2 } from "lucide-react";
 import { HashtagStyle, EmojiStyle, BusinessProfile, BusinessIndustry } from "@/lib/types";
-import { IndustryId, getIndustryOptions } from "@/lib/industryProfiles";
+import { BusinessTypeId, getBusinessTypeOptions } from "@/lib/industryProfiles";
 
 const BUSINESS_CONTEXT_MAX_LENGTH = 2000;
 const BUSINESS_INDUSTRY_OPTIONS: { value: BusinessIndustry; label: string }[] = [
@@ -27,7 +27,8 @@ export default function SettingsPage() {
     setHashtagStyle,
     setEmojiStyle,
     setAvoidWords,
-    setIndustry,
+    setBusinessType,
+    setStrictGuidance,
   } = useWorkspaceUiSettings();
   const [showSaved, setShowSaved] = useState<string | null>(null);
   const [localAvoidWords, setLocalAvoidWords] = useState(aiSettings.avoidWords);
@@ -193,9 +194,14 @@ export default function SettingsPage() {
     }, 1000);
   };
 
-  const handleIndustryChange = async (value: IndustryId) => {
-    await setIndustry(value);
-    showSavedIndicator("industry");
+  const handleBusinessTypeChange = async (value: BusinessTypeId) => {
+    await setBusinessType(value);
+    showSavedIndicator("businessType");
+  };
+
+  const handleStrictGuidanceToggle = async () => {
+    await setStrictGuidance(!aiSettings.strictGuidance);
+    showSavedIndicator("strictGuidance");
   };
 
   const showSavedIndicator = (key: string) => {
@@ -438,7 +444,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {/* Industry Optimization */}
+            {/* Business Type */}
             <div className="px-6 py-5">
               <div className="flex items-start gap-4">
                 <div className="p-2 bg-emerald-100 dark:bg-emerald-900/20 rounded-md">
@@ -446,10 +452,10 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-2">
-                    <label htmlFor="industry" className="text-sm font-medium text-[var(--text-primary)]">
-                      Industry Optimization
+                    <label htmlFor="businessType" className="text-sm font-medium text-[var(--text-primary)]">
+                      Business Type
                     </label>
-                    {showSaved === "industry" && (
+                    {showSaved === "businessType" && (
                       <span className="inline-flex items-center gap-1 text-xs text-[var(--status-success)]">
                         <Check className="w-3 h-3" />
                         Saved
@@ -457,20 +463,66 @@ export default function SettingsPage() {
                     )}
                   </div>
                   <p className="text-xs text-[var(--text-tertiary)] mb-3">
-                    Used to optimize AI scheduling and post generation. You can still edit everything manually.
+                    Used to optimize AI scheduling, posting times, and language style.
                   </p>
                   <select
-                    id="industry"
-                    value={aiSettings.industry}
-                    onChange={(e) => handleIndustryChange(e.target.value as IndustryId)}
+                    id="businessType"
+                    value={aiSettings.businessType}
+                    onChange={(e) => handleBusinessTypeChange(e.target.value as BusinessTypeId)}
                     className="w-full text-sm text-[var(--text-primary)] border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg p-3 focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)]"
                   >
-                    {getIndustryOptions().map((option) => (
+                    {getBusinessTypeOptions().map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>
                     ))}
                   </select>
+
+                  {/* Strict Guidance Toggle */}
+                  <div className="mt-4 pt-4 border-t border-[var(--border-secondary)]">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <label
+                          htmlFor="strictGuidance"
+                          className="text-sm font-medium text-[var(--text-primary)] cursor-pointer"
+                        >
+                          Strict AI Guidance
+                        </label>
+                        <p className="text-xs text-[var(--text-tertiary)] mt-1">
+                          AI follows business type language rules strictly (recommended). Turn off for more creative freedom.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        {showSaved === "strictGuidance" && (
+                          <span className="inline-flex items-center gap-1 text-xs text-[var(--status-success)]">
+                            <Check className="w-3 h-3" />
+                            Saved
+                          </span>
+                        )}
+                        <button
+                          id="strictGuidance"
+                          role="switch"
+                          aria-checked={aiSettings.strictGuidance}
+                          onClick={handleStrictGuidanceToggle}
+                          disabled={loading}
+                          className={`
+                            relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent
+                            transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] focus-visible:ring-offset-2
+                            disabled:opacity-50 disabled:cursor-not-allowed
+                            ${aiSettings.strictGuidance ? "bg-[var(--accent-primary)]" : "bg-[var(--bg-tertiary)]"}
+                          `}
+                        >
+                          <span
+                            className={`
+                              pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0
+                              transition duration-200 ease-in-out
+                              ${aiSettings.strictGuidance ? "translate-x-5" : "translate-x-0"}
+                            `}
+                          />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

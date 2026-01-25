@@ -1,11 +1,14 @@
 /**
- * Industry Profiles Configuration
+ * Business Type Profiles Configuration
  *
- * Central config for industry-specific optimizations.
- * Adding a new industry requires only updating this file + dropdown option.
+ * Central config for business type-specific optimizations.
+ * Adding a new business type requires only updating this file + dropdown option.
  */
 
-export type IndustryId = "restaurant" | "retail";
+export type BusinessTypeId = "restaurant" | "bar_brewery";
+
+// Keep IndustryId as alias for backward compatibility
+export type IndustryId = BusinessTypeId;
 
 export interface PostingFrequency {
   min: number;
@@ -15,6 +18,7 @@ export interface PostingFrequency {
 export interface TimeWindow {
   start: string; // HH:MM format
   end: string;
+  dayTypes?: ("weekday" | "weekend")[]; // If specified, window only applies to these day types
 }
 
 export interface LanguageBias {
@@ -30,17 +34,18 @@ export interface IndustryRationale {
     fb: string;
   };
   frequencyRationale: string;
-  bestPracticeSource: string; // e.g., "Based on 2024 industry engagement studies"
+  bestPracticeSource: string;
 }
 
 export interface IndustryProfile {
-  id: IndustryId;
+  id: BusinessTypeId;
   label: string;
   postingFrequency: {
     ig: PostingFrequency;
     fb: PostingFrequency;
   };
-  preferredDays: number[]; // 0 = Sunday, 6 = Saturday
+  preferredDays: number[]; // 0 = Sunday, 6 = Saturday (prioritized)
+  lightDays: number[]; // Days to use only if needed to hit targets
   timeWindows: {
     ig: TimeWindow[];
     fb: TimeWindow[];
@@ -49,7 +54,7 @@ export interface IndustryProfile {
   rationale: IndustryRationale;
 }
 
-export const INDUSTRY_PROFILES: Record<IndustryId, IndustryProfile> = {
+export const INDUSTRY_PROFILES: Record<BusinessTypeId, IndustryProfile> = {
   restaurant: {
     id: "restaurant",
     label: "Restaurant",
@@ -57,20 +62,23 @@ export const INDUSTRY_PROFILES: Record<IndustryId, IndustryProfile> = {
       ig: { min: 6, max: 7 },
       fb: { min: 4, max: 6 },
     },
-    preferredDays: [0, 1, 2, 3, 4, 5, 6], // All days
+    preferredDays: [0, 3, 4, 5, 6], // Sun, Wed, Thu, Fri, Sat
+    lightDays: [1, 2], // Mon, Tue - use only if needed
     timeWindows: {
       ig: [
-        { start: "11:00", end: "13:00" }, // Lunch consideration
-        { start: "17:00", end: "19:00" }, // Dinner consideration
+        { start: "11:00", end: "13:00", dayTypes: ["weekday"] },
+        { start: "16:30", end: "18:30", dayTypes: ["weekday"] },
+        { start: "09:30", end: "11:00", dayTypes: ["weekend"] },
       ],
       fb: [
-        { start: "11:00", end: "13:00" },
-        { start: "18:00", end: "20:00" },
+        { start: "11:00", end: "13:00", dayTypes: ["weekday"] },
+        { start: "16:30", end: "18:30", dayTypes: ["weekday"] },
+        { start: "09:30", end: "11:00", dayTypes: ["weekend"] },
       ],
     },
     languageBias: {
-      avoidWords: ["indulge", "mouthwatering", "delectable", "scrumptious", "yummy"],
-      preferredTone: "warm and inviting, focusing on community and fresh ingredients",
+      avoidWords: ["indulge", "mouthwatering", "delectable", "scrumptious", "yummy", "nightlife", "party", "drinks"],
+      preferredTone: "food-first, menu highlights, warm inviting language; avoid nightlife-heavy tone",
     },
     rationale: {
       whyThisWorks: [
@@ -80,57 +88,60 @@ export const INDUSTRY_PROFILES: Record<IndustryId, IndustryProfile> = {
         "Visual-first content showcases dishes at their most appetizing",
       ],
       postingTimeRationale: {
-        ig: "11am-1pm (lunch) and 5-7pm (dinner) when people decide where to eat",
-        fb: "11am-1pm and 6-8pm when Facebook users browse during meal planning",
+        ig: "Weekdays 11am-1pm (lunch) or 4:30-6:30pm (dinner); Weekends 9:30-11am (brunch planning)",
+        fb: "Weekdays 11am-1pm or 4:30-6:30pm; Weekends 9:30-11am when users plan outings",
       },
       frequencyRationale: "6-7 posts/week on IG, 4-6 on FB mirrors restaurant discovery patterns",
       bestPracticeSource: "Based on 2024 hospitality social media engagement studies",
     },
   },
-  retail: {
-    id: "retail",
-    label: "Retail",
+  bar_brewery: {
+    id: "bar_brewery",
+    label: "Bar / Brewery",
     postingFrequency: {
       ig: { min: 5, max: 6 },
-      fb: { min: 3, max: 5 },
+      fb: { min: 4, max: 5 },
     },
-    preferredDays: [0, 1, 2, 3, 4, 5, 6], // All days
+    preferredDays: [0, 4, 5, 6], // Sun, Thu, Fri, Sat
+    lightDays: [1, 2, 3], // Mon, Tue, Wed - use only if needed
     timeWindows: {
       ig: [
-        { start: "10:00", end: "12:00" }, // Morning shopping
-        { start: "19:00", end: "21:00" }, // Evening browsing
+        { start: "16:00", end: "18:00", dayTypes: ["weekday"] },
+        { start: "18:30", end: "21:00", dayTypes: ["weekday"] },
+        { start: "11:00", end: "13:00", dayTypes: ["weekend"] },
       ],
       fb: [
-        { start: "12:00", end: "14:00" },
-        { start: "19:00", end: "21:00" },
+        { start: "16:00", end: "18:00", dayTypes: ["weekday"] },
+        { start: "18:30", end: "21:00", dayTypes: ["weekday"] },
+        { start: "11:00", end: "13:00", dayTypes: ["weekend"] },
       ],
     },
     languageBias: {
-      avoidWords: ["indulge", "splurge", "treat yourself", "must-have"],
-      preferredTone: "helpful and enthusiastic, focusing on value and quality",
+      avoidWords: ["indulge", "mouthwatering", "delectable", "scrumptious", "yummy", "fine dining", "gourmet"],
+      preferredTone: "atmosphere + drinks + events energy; avoid overly food-descriptive tone unless food is mentioned",
     },
     rationale: {
       whyThisWorks: [
-        "Posts reach shoppers during peak browsing and purchase-intent windows",
-        "Consistent cadence keeps products top-of-mind without overwhelming",
-        "Value-focused messaging aligns with retail purchase psychology",
-        "Product imagery drives click-through and store visits",
+        "Posts catch users during happy hour planning and weekend outing decisions",
+        "Event and atmosphere-focused content drives foot traffic",
+        "Energetic language matches the social nature of bar/brewery visits",
+        "Timing aligns with when people plan evening and weekend activities",
       ],
       postingTimeRationale: {
-        ig: "10am-12pm (morning browse) and 7-9pm (evening shopping) when buyers are active",
-        fb: "12-2pm (lunch break browse) and 7-9pm (evening relaxation) for discovery",
+        ig: "Weekdays 4-6pm (happy hour) or 6:30-9pm (evening plans); Weekends 11am-1pm (day drinking)",
+        fb: "Weekdays 4-6pm or 6:30-9pm; Weekends 11am-1pm when groups plan meetups",
       },
-      frequencyRationale: "5-6 posts/week on IG, 3-5 on FB balances visibility with quality",
-      bestPracticeSource: "Based on 2024 retail social commerce benchmarks",
+      frequencyRationale: "5-6 posts/week on IG, 4-5 on FB captures weekend-heavy audience",
+      bestPracticeSource: "Based on 2024 beverage industry social media benchmarks",
     },
   },
 };
 
 /**
- * Get default posting frequency for an industry (uses HIGH end)
+ * Get default posting frequency for a business type (uses HIGH end)
  */
-export function getDefaultPostingFrequency(industryId: IndustryId): { ig: number; fb: number } {
-  const profile = INDUSTRY_PROFILES[industryId];
+export function getDefaultPostingFrequency(businessTypeId: BusinessTypeId): { ig: number; fb: number } {
+  const profile = INDUSTRY_PROFILES[businessTypeId];
   return {
     ig: profile.postingFrequency.ig.max,
     fb: profile.postingFrequency.fb.max,
@@ -138,18 +149,71 @@ export function getDefaultPostingFrequency(industryId: IndustryId): { ig: number
 }
 
 /**
- * Get industry profile by ID, with fallback to restaurant
+ * Get business type profile by ID, with fallback to restaurant
  */
-export function getIndustryProfile(industryId?: IndustryId): IndustryProfile {
-  return INDUSTRY_PROFILES[industryId || "restaurant"];
+export function getIndustryProfile(businessTypeId?: BusinessTypeId): IndustryProfile {
+  return INDUSTRY_PROFILES[businessTypeId || "restaurant"];
 }
 
+// Alias for clarity
+export const getBusinessTypeProfile = getIndustryProfile;
+
 /**
- * Get all industry options for dropdowns
+ * Get all business type options for dropdowns
  */
-export function getIndustryOptions(): { value: IndustryId; label: string }[] {
+export function getIndustryOptions(): { value: BusinessTypeId; label: string }[] {
   return Object.values(INDUSTRY_PROFILES).map((profile) => ({
     value: profile.id,
     label: profile.label,
   }));
+}
+
+// Alias for clarity
+export const getBusinessTypeOptions = getIndustryOptions;
+
+/**
+ * Check if a day is a weekend (Sat/Sun)
+ */
+export function isWeekend(dayOfWeek: number): boolean {
+  return dayOfWeek === 0 || dayOfWeek === 6;
+}
+
+/**
+ * Get appropriate time window for a given day and platform
+ */
+export function getTimeWindowForDay(
+  businessTypeId: BusinessTypeId,
+  platform: "ig" | "fb",
+  dayOfWeek: number
+): TimeWindow {
+  const profile = INDUSTRY_PROFILES[businessTypeId || "restaurant"];
+  const windows = profile.timeWindows[platform];
+  const dayType = isWeekend(dayOfWeek) ? "weekend" : "weekday";
+
+  // Find windows that match this day type
+  const matchingWindows = windows.filter(
+    (w) => !w.dayTypes || w.dayTypes.includes(dayType)
+  );
+
+  // Return a random matching window, or first window as fallback
+  if (matchingWindows.length > 0) {
+    return matchingWindows[Math.floor(Math.random() * matchingWindows.length)];
+  }
+  return windows[0];
+}
+
+/**
+ * Check if a day is preferred for this business type
+ */
+export function isPreferredDay(businessTypeId: BusinessTypeId, dayOfWeek: number): boolean {
+  const profile = INDUSTRY_PROFILES[businessTypeId || "restaurant"];
+  return profile.preferredDays.includes(dayOfWeek);
+}
+
+/**
+ * Check if a day is a "light" day (Mon/Tue typically)
+ */
+export function isLightDay(businessTypeId: BusinessTypeId, dayOfWeek: number): boolean {
+  const profile = INDUSTRY_PROFILES[businessTypeId || "restaurant"];
+  return profile.lightDays.includes(dayOfWeek);
 }

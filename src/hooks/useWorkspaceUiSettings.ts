@@ -5,7 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { HashtagStyle, EmojiStyle } from "@/lib/types";
-import { IndustryId } from "@/lib/industryProfiles";
+import { BusinessTypeId } from "@/lib/industryProfiles";
 
 interface WorkspaceUiSettings {
     hidePastUnsent: boolean;
@@ -16,7 +16,8 @@ interface WorkspaceAiSettings {
     hashtagStyle: HashtagStyle;
     emojiStyle: EmojiStyle;
     avoidWords: string; // Comma-separated list of words/phrases to avoid
-    industry: IndustryId;
+    businessType: BusinessTypeId;
+    strictGuidance: boolean; // AI uses strict language bias from business type
 }
 
 interface WorkspaceSettings {
@@ -33,7 +34,8 @@ interface UseWorkspaceUiSettingsResult {
     setHashtagStyle: (value: HashtagStyle) => Promise<void>;
     setEmojiStyle: (value: EmojiStyle) => Promise<void>;
     setAvoidWords: (value: string) => Promise<void>;
-    setIndustry: (value: IndustryId) => Promise<void>;
+    setBusinessType: (value: BusinessTypeId) => Promise<void>;
+    setStrictGuidance: (value: boolean) => Promise<void>;
 }
 
 const DEFAULT_UI_SETTINGS: WorkspaceUiSettings = {
@@ -45,7 +47,8 @@ const DEFAULT_AI_SETTINGS: WorkspaceAiSettings = {
     hashtagStyle: "medium",
     emojiStyle: "low",
     avoidWords: "indulge", // Default avoid word
-    industry: "restaurant", // Default industry
+    businessType: "restaurant", // Default business type
+    strictGuidance: true, // AI uses strict language bias by default
 };
 
 const LOCAL_STORAGE_KEY = "workspaceSettings";
@@ -102,7 +105,8 @@ export function useWorkspaceUiSettings(): UseWorkspaceUiSettingsResult {
                             hashtagStyle: aiData.hashtagStyle ?? DEFAULT_AI_SETTINGS.hashtagStyle,
                             emojiStyle: aiData.emojiStyle ?? DEFAULT_AI_SETTINGS.emojiStyle,
                             avoidWords: aiData.avoidWords ?? DEFAULT_AI_SETTINGS.avoidWords,
-                            industry: aiData.industry ?? DEFAULT_AI_SETTINGS.industry,
+                            businessType: aiData.businessType ?? aiData.industry ?? DEFAULT_AI_SETTINGS.businessType, // Fallback to legacy industry field
+                            strictGuidance: aiData.strictGuidance ?? DEFAULT_AI_SETTINGS.strictGuidance,
                         },
                     };
                     setSettings(newSettings);
@@ -278,15 +282,15 @@ export function useWorkspaceUiSettings(): UseWorkspaceUiSettingsResult {
         [workspaceId]
     );
 
-    // Update industry in Firestore
-    const setIndustry = useCallback(
-        async (value: IndustryId) => {
+    // Update businessType in Firestore
+    const setBusinessType = useCallback(
+        async (value: BusinessTypeId) => {
             if (!workspaceId) return;
 
             // Optimistic update
             setSettings((prev) => ({
                 ...prev,
-                ai: { ...prev.ai, industry: value },
+                ai: { ...prev.ai, businessType: value },
             }));
 
             try {
@@ -296,14 +300,45 @@ export function useWorkspaceUiSettings(): UseWorkspaceUiSettingsResult {
                     {
                         settings: {
                             ai: {
-                                industry: value,
+                                businessType: value,
                             },
                         },
                     },
                     { merge: true }
                 );
             } catch (error) {
-                console.error("Error saving industry:", error);
+                console.error("Error saving business type:", error);
+            }
+        },
+        [workspaceId]
+    );
+
+    // Update strictGuidance in Firestore
+    const setStrictGuidance = useCallback(
+        async (value: boolean) => {
+            if (!workspaceId) return;
+
+            // Optimistic update
+            setSettings((prev) => ({
+                ...prev,
+                ai: { ...prev.ai, strictGuidance: value },
+            }));
+
+            try {
+                const workspaceRef = doc(db, "workspaces", workspaceId);
+                await setDoc(
+                    workspaceRef,
+                    {
+                        settings: {
+                            ai: {
+                                strictGuidance: value,
+                            },
+                        },
+                    },
+                    { merge: true }
+                );
+            } catch (error) {
+                console.error("Error saving strict guidance:", error);
             }
         },
         [workspaceId]
@@ -318,6 +353,7 @@ export function useWorkspaceUiSettings(): UseWorkspaceUiSettingsResult {
         setHashtagStyle,
         setEmojiStyle,
         setAvoidWords,
-        setIndustry,
+        setBusinessType,
+        setStrictGuidance,
     };
 }
