@@ -486,11 +486,42 @@ export default function PostsPage() {
     setShowExportDropdown(false);
   }, []);
 
-  const startCalendarPdfExport = useCallback((includeImages: boolean) => {
-    setPdfIncludeImages(includeImages);
+  const startCalendarPdfExport = useCallback(() => {
+    setPdfIncludeImages(true);
     setShowCalendarPdf(true);
     setShowExportDropdown(false);
   }, []);
+
+  // Export editable CSV (compatible with CSVImport)
+  const exportEditableCsv = useCallback(() => {
+    const postsToExport = getPostsForExport();
+    if (postsToExport.length === 0) return;
+
+    // Build CSV with columns that CSVImport expects
+    const headers = ["date", "starterText", "imageUrl"];
+    const rows = postsToExport.map((post) => {
+      const imageUrl = post.imageAssetId ? imageUrls.get(post.imageAssetId) || "" : "";
+      return [
+        post.date,
+        `"${(post.starterText || "").replace(/"/g, '""')}"`, // Escape quotes
+        imageUrl,
+      ].join(",");
+    });
+
+    const csv = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `posts-export-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setShowExportDropdown(false);
+    showToast("success", `Exported ${postsToExport.length} posts to CSV`);
+  }, [getPostsForExport, imageUrls, showToast]);
 
   // Batch action bar actions
   const batchActions = [
@@ -587,6 +618,13 @@ export default function PostsPage() {
                 />
                 <div className="absolute right-0 mt-2 w-56 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg shadow-lg z-50 py-1">
                   <button
+                    onClick={exportEditableCsv}
+                    className="w-full px-4 py-2 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
+                  >
+                    <FileText className="w-4 h-4 text-[var(--text-tertiary)]" />
+                    Export CSV (editable)
+                  </button>
+                  <button
                     onClick={() => {
                       setShowExportModal(true);
                       setShowExportDropdown(false);
@@ -613,18 +651,11 @@ export default function PostsPage() {
                   </button>
                   <div className="border-t border-[var(--border-secondary)] my-1" />
                   <button
-                    onClick={() => startCalendarPdfExport(true)}
+                    onClick={startCalendarPdfExport}
                     className="w-full px-4 py-2 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
                   >
                     <Calendar className="w-4 h-4 text-[var(--text-tertiary)]" />
-                    Calendar PDF (with images)
-                  </button>
-                  <button
-                    onClick={() => startCalendarPdfExport(false)}
-                    className="w-full px-4 py-2 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
-                  >
-                    <Calendar className="w-4 h-4 text-[var(--text-tertiary)]" />
-                    Calendar PDF (text only)
+                    Calendar PDF
                   </button>
                 </div>
               </>
