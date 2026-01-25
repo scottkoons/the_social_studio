@@ -1,4 +1,4 @@
-import { PostDay } from "./types";
+import { PostDay, getPostDocId } from "./types";
 import { randomPlatformTimeInWindow5Min } from "./postingTime";
 
 export type BufferPlatform = "instagram" | "facebook";
@@ -18,12 +18,14 @@ export interface ExportResult {
     skippedNoImage: number;
     skippedNoCaption: number;
     skippedDates: string[];
+    exportedPostIds: string[]; // Post IDs that were successfully exported
 }
 
 export interface ExportSummary {
     exported: number;
     skippedNoImage: number;
     skippedNoCaption: number;
+    exportedPostIds: string[];
 }
 
 /**
@@ -121,8 +123,10 @@ export function generateBufferCsv(
     let skippedNoImage = 0;
     let skippedNoCaption = 0;
     const skippedDates: string[] = [];
+    const exportedPostIds: string[] = [];
 
     for (const post of posts) {
+        const postId = getPostDocId(post);
         // Resolve image URL (check post.imageUrl first, then asset lookup)
         const imageUrl = resolveImageUrl(post, imageUrls);
 
@@ -175,6 +179,7 @@ export function generateBufferCsv(
 
         rows.push(row);
         exportedCount++;
+        exportedPostIds.push(postId);
     }
 
     return {
@@ -183,6 +188,7 @@ export function generateBufferCsv(
         skippedNoImage,
         skippedNoCaption,
         skippedDates,
+        exportedPostIds,
     };
 }
 
@@ -220,6 +226,7 @@ export async function generateMultiPlatformZip(
     let totalExported = 0;
     let totalSkippedNoImage = 0;
     let totalSkippedNoCaption = 0;
+    let exportedPostIds: string[] = [];
 
     for (const platform of platforms) {
         const result = generateBufferCsv(posts, platform, imageUrls);
@@ -230,6 +237,7 @@ export async function generateMultiPlatformZip(
         if (platform === platforms[0]) {
             totalSkippedNoImage = result.skippedNoImage;
             totalSkippedNoCaption = result.skippedNoCaption;
+            exportedPostIds = result.exportedPostIds;
         }
         totalExported = Math.max(totalExported, result.exportedCount);
     }
@@ -242,6 +250,7 @@ export async function generateMultiPlatformZip(
             exported: totalExported,
             skippedNoImage: totalSkippedNoImage,
             skippedNoCaption: totalSkippedNoCaption,
+            exportedPostIds,
         },
     };
 }

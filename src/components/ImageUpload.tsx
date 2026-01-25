@@ -25,6 +25,14 @@ interface FileSizes {
     compressed: number;
 }
 
+interface AssetData {
+    id: string;
+    storagePath: string;
+    fileName: string;
+    contentType: string;
+    size: number;
+}
+
 function formatFileSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -33,7 +41,7 @@ function formatFileSize(bytes: number): string {
 
 export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageUploadProps) {
     const { user, workspaceId } = useAuth();
-    const [asset, setAsset] = useState<any>(null);
+    const [asset, setAsset] = useState<AssetData | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [showPreviewModal, setShowPreviewModal] = useState(false);
     const [showUrlInput, setShowUrlInput] = useState(false);
@@ -49,7 +57,7 @@ export default function ImageUpload({ post, onUploadStart, onUploadEnd }: ImageU
                 const assetRef = doc(db, "workspaces", workspaceId, "assets", post.imageAssetId);
                 const assetSnap = await getDoc(assetRef);
                 if (assetSnap.exists()) {
-                    setAsset(assetSnap.data());
+                    setAsset(assetSnap.data() as AssetData);
                 }
             } else {
                 setAsset(null);

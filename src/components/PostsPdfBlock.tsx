@@ -14,7 +14,6 @@ import {
     ROW_COLOR_WHITE,
     ROW_COLOR_CREAM,
     formatDateTimeForTable,
-    CONTENT_WIDTH_PX,
 } from "@/lib/postsPdfExport";
 import { formatTimeForDisplay, randomTimeInWindow5Min } from "@/lib/postingTime";
 import { format, parseISO } from "date-fns";
@@ -222,6 +221,7 @@ const PostsPdfRow = forwardRef<HTMLDivElement, PostsPdfRowProps>(
                     }}
                 >
                     {imageDataUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                             src={imageDataUrl}
                             alt=""

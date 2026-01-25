@@ -15,7 +15,7 @@ const firebaseConfig = {
 
 // Ensure all config values are present
 const missingVars = Object.entries(firebaseConfig)
-    .filter(([_, value]) => !value)
+    .filter(([, value]) => !value)
     .map(([key]) => `NEXT_PUBLIC_FIREBASE_${key.replace(/[A-Z]/g, letter => `_${letter}`).toUpperCase()}`);
 
 if (missingVars.length > 0) {

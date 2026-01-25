@@ -7,7 +7,7 @@ import { collection, query, onSnapshot, orderBy } from "firebase/firestore";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCard from "@/components/ui/DashboardCard";
 import CSVImport from "@/components/CSVImport";
-import { Calendar, Clock, CheckCircle, AlertCircle, Edit3, Send, Image as ImageIcon } from "lucide-react";
+import { Calendar, Clock, CheckCircle, Edit3, Send, Image as ImageIcon } from "lucide-react";
 import { getTodayInDenver, formatDisplayDate } from "@/lib/utils";
 import { formatTimeForDisplay } from "@/lib/postingTime";
 import { PostDay } from "@/lib/types";
@@ -41,7 +41,6 @@ export default function PlanningPage() {
     const today = getTodayInDenver();
 
     // Group posts by date (for counting unique days, not platform-specific)
-    const uniqueDates = new Set(posts.map(p => p.date));
     const futurePosts = posts.filter(p => p.date >= today);
     const futureDates = new Set(futurePosts.map(p => p.date));
 

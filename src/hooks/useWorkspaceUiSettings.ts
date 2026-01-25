@@ -14,6 +14,7 @@ interface WorkspaceAiSettings {
     brandVoice: string;
     hashtagStyle: HashtagStyle;
     emojiStyle: EmojiStyle;
+    avoidWords: string; // Comma-separated list of words/phrases to avoid
 }
 
 interface WorkspaceSettings {
@@ -29,6 +30,7 @@ interface UseWorkspaceUiSettingsResult {
     setBrandVoice: (value: string) => Promise<void>;
     setHashtagStyle: (value: HashtagStyle) => Promise<void>;
     setEmojiStyle: (value: EmojiStyle) => Promise<void>;
+    setAvoidWords: (value: string) => Promise<void>;
 }
 
 const DEFAULT_UI_SETTINGS: WorkspaceUiSettings = {
@@ -39,6 +41,7 @@ const DEFAULT_AI_SETTINGS: WorkspaceAiSettings = {
     brandVoice: "",
     hashtagStyle: "medium",
     emojiStyle: "low",
+    avoidWords: "indulge", // Default avoid word
 };
 
 const LOCAL_STORAGE_KEY = "workspaceSettings";
@@ -94,6 +97,7 @@ export function useWorkspaceUiSettings(): UseWorkspaceUiSettingsResult {
                             brandVoice: aiData.brandVoice ?? DEFAULT_AI_SETTINGS.brandVoice,
                             hashtagStyle: aiData.hashtagStyle ?? DEFAULT_AI_SETTINGS.hashtagStyle,
                             emojiStyle: aiData.emojiStyle ?? DEFAULT_AI_SETTINGS.emojiStyle,
+                            avoidWords: aiData.avoidWords ?? DEFAULT_AI_SETTINGS.avoidWords,
                         },
                     };
                     setSettings(newSettings);
@@ -238,6 +242,37 @@ export function useWorkspaceUiSettings(): UseWorkspaceUiSettingsResult {
         [workspaceId]
     );
 
+    // Update avoidWords in Firestore
+    const setAvoidWords = useCallback(
+        async (value: string) => {
+            if (!workspaceId) return;
+
+            // Optimistic update
+            setSettings((prev) => ({
+                ...prev,
+                ai: { ...prev.ai, avoidWords: value },
+            }));
+
+            try {
+                const workspaceRef = doc(db, "workspaces", workspaceId);
+                await setDoc(
+                    workspaceRef,
+                    {
+                        settings: {
+                            ai: {
+                                avoidWords: value,
+                            },
+                        },
+                    },
+                    { merge: true }
+                );
+            } catch (error) {
+                console.error("Error saving avoid words:", error);
+            }
+        },
+        [workspaceId]
+    );
+
     return {
         settings: settings.ui,
         aiSettings: settings.ai,
@@ -246,5 +281,6 @@ export function useWorkspaceUiSettings(): UseWorkspaceUiSettingsResult {
         setBrandVoice,
         setHashtagStyle,
         setEmojiStyle,
+        setAvoidWords,
     };
 }

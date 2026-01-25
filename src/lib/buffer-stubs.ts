@@ -1,11 +1,10 @@
 import { PostDay } from "./types";
 import { isStrictlyFutureInDenver } from "./utils";
-import { serverTimestamp } from "firebase/firestore";
 
 export interface BufferResult {
     success: boolean;
     message: string;
-    pushedAt?: any;
+    pushedAt?: Date;
 }
 
 /**
@@ -64,6 +63,6 @@ export async function sendToBufferStub(post: PostDay): Promise<BufferResult> {
     return {
         success: true,
         message: "Successfully pushed to Buffer (stub).",
-        pushedAt: serverTimestamp()
+        pushedAt: new Date()
     };
 }

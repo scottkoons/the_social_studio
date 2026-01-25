@@ -12,14 +12,17 @@ import {
     BufferPlatform,
     postHasImage,
 } from "@/lib/bufferCsvExport";
+import { createExportBatch } from "@/lib/lifecycleService";
+import { useAuth } from "@/context/AuthContext";
 
 interface BufferExportModalProps {
     open: boolean;
     posts: PostDay[];
     imageUrls: Map<string, string>;
     imageUrlsLoading?: boolean;
+    workspaceId?: string;
     onClose: () => void;
-    onExportComplete: (summary: { exported: number; skipped: number }) => void;
+    onExportComplete: (summary: { exported: number; skipped: number; exportedPostIds: string[] }) => void;
 }
 
 export default function BufferExportModal({
@@ -27,9 +30,12 @@ export default function BufferExportModal({
     posts,
     imageUrls,
     imageUrlsLoading = false,
+    workspaceId: propWorkspaceId,
     onClose,
     onExportComplete,
 }: BufferExportModalProps) {
+    const { user, workspaceId: authWorkspaceId } = useAuth();
+    const workspaceId = propWorkspaceId || authWorkspaceId;
     const [selectedPlatforms, setSelectedPlatforms] = useState<Set<BufferPlatform>>(
         new Set(["instagram", "facebook"])
     );
@@ -107,6 +113,10 @@ export default function BufferExportModal({
 
         try {
             const platforms = Array.from(selectedPlatforms);
+            let exportedPostIds: string[] = [];
+            let skippedNoImage = 0;
+            let skippedNoCaption = 0;
+            let filenames: string[] = [];
 
             if (platforms.length === 1) {
                 // Single platform: download CSV directly
@@ -115,9 +125,29 @@ export default function BufferExportModal({
                 const filename = getExportFilename(platform);
                 downloadCsv(result.csv, filename);
 
+                exportedPostIds = result.exportedPostIds;
+                skippedNoImage = result.skippedNoImage;
+                skippedNoCaption = result.skippedNoCaption;
+                filenames = [filename];
+
+                // Create export batch record and update posts
+                if (workspaceId && user && exportedPostIds.length > 0) {
+                    await createExportBatch({
+                        workspaceId,
+                        userId: user.uid,
+                        platforms,
+                        exportedPostIds,
+                        skippedNoImage,
+                        skippedNoCaption,
+                        filenames,
+                        posts,
+                    });
+                }
+
                 onExportComplete({
                     exported: result.exportedCount,
                     skipped: result.skippedNoImage + result.skippedNoCaption,
+                    exportedPostIds,
                 });
             } else {
                 // Multiple platforms: generate ZIP
@@ -129,9 +159,29 @@ export default function BufferExportModal({
                 const filename = getExportFilename("all");
                 downloadZip(blob, filename);
 
+                exportedPostIds = summary.exportedPostIds;
+                skippedNoImage = summary.skippedNoImage;
+                skippedNoCaption = summary.skippedNoCaption;
+                filenames = [filename];
+
+                // Create export batch record and update posts
+                if (workspaceId && user && exportedPostIds.length > 0) {
+                    await createExportBatch({
+                        workspaceId,
+                        userId: user.uid,
+                        platforms,
+                        exportedPostIds,
+                        skippedNoImage,
+                        skippedNoCaption,
+                        filenames,
+                        posts,
+                    });
+                }
+
                 onExportComplete({
                     exported: summary.exported,
                     skipped: summary.skippedNoImage + summary.skippedNoCaption,
+                    exportedPostIds,
                 });
             }
 

@@ -60,7 +60,7 @@ export default function PlatformPlanCard({
 
     // CSV state
     const [csvFile, setCsvFile] = useState<File | null>(null);
-    const [csvRows, setCsvRows] = useState<PlanningCsvRow[]>([]);
+    const [, setCsvRows] = useState<PlanningCsvRow[]>([]);
     const [schedulePreview, setSchedulePreview] = useState<SchedulePreview | null>(null);
 
     // Processing state
@@ -568,7 +568,7 @@ export default function PlatformPlanCard({
                 {/* Empty state when no plan generated */}
                 {!generatedPlan && datesValid && (
                     <div className="text-center py-4 text-sm text-[var(--text-muted)]">
-                        Click "Generate Plan" to see available posting slots
+                        Click &quot;Generate Plan&quot; to see available posting slots
                     </div>
                 )}
 

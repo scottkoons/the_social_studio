@@ -12,7 +12,17 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Compiled Cloud Functions output
+    "functions/lib/**",
   ]),
+  // Custom rule overrides
+  {
+    rules: {
+      // Disable overly strict setState-in-effect rule
+      // This pattern is valid for syncing with external data sources (Firestore, localStorage)
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

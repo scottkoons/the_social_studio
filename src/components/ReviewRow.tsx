@@ -7,7 +7,9 @@ import { doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { ref, getDownloadURL } from "firebase/storage";
 import ImageUpload from "./ImageUpload";
 import StatusPill from "./ui/StatusPill";
+import LifecyclePill from "./ui/LifecyclePill";
 import ConfirmModal from "./ui/ConfirmModal";
+import { getLifecycleStatus, markPostEditedAfterUpload } from "@/lib/lifecycleService";
 import PostDetailModal from "./PostDetailModal";
 import { Loader2, RefreshCw, Trash2, AlertCircle, Expand } from "lucide-react";
 import { isPostPastDue, formatDisplayDate } from "@/lib/utils";
@@ -104,6 +106,12 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
                     status: post.status === "sent" ? post.status : "edited",
                     updatedAt: serverTimestamp(),
                 });
+
+                // Mark as edited after upload if the post was already uploaded/posted
+                const currentLifecycle = getLifecycleStatus(post);
+                if (currentLifecycle === "uploaded" || currentLifecycle === "posted") {
+                    await markPostEditedAfterUpload(workspaceId, docId, currentLifecycle);
+                }
             } catch (err) {
                 console.error("Autosave error:", err);
             } finally {
@@ -367,7 +375,13 @@ export default function ReviewRow({ post, isSelected, isGenerating, platformFilt
                     {isSaving ? (
                         <Loader2 className="animate-spin text-[var(--accent-primary)]" size={16} />
                     ) : (
-                        <StatusPill status={post.status} wouldBeSkipped={isPast || !post.imageAssetId} />
+                        <>
+                            <StatusPill status={post.status} wouldBeSkipped={isPast || !post.imageAssetId} />
+                            <LifecyclePill
+                                status={getLifecycleStatus(post)}
+                                editedAfterUpload={post.editedAfterUpload}
+                            />
+                        </>
                     )}
                     <button
                         onClick={handleOpenDetail}

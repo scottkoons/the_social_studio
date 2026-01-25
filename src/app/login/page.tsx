@@ -21,10 +21,10 @@ export default function LoginPage() {
         try {
             await signIn(email, password);
             router.replace("/input");
-        } catch (err: any) {
-            // No need to console.error standard auth failures, 
+        } catch (err: unknown) {
+            // No need to console.error standard auth failures,
             // the friendly message is enough for the user.
-            setError(err.message);
+            setError(err instanceof Error ? err.message : "Login failed");
         } finally {
             setLoading(false);
         }

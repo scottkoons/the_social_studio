@@ -88,9 +88,13 @@ export async function movePostDay(
         // Copy all fields from source, update date and timestamp
         // Recalculate posting times for new date (re-roll rule)
         // Use stripUndefined to ensure no undefined values reach Firestore
+        // Exclude legacy fields that we don't want in new documents
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { postingTime, postingTimeSource, platform, ...sourceDataWithoutLegacy } = sourceData;
+
         const newPostingTimes = generatePlatformPostingTimesForDateChange(toDate);
         const newDocData = stripUndefined({
-            ...sourceData,
+            ...sourceDataWithoutLegacy,
             date: toDate,
             postingTimeIg: newPostingTimes.ig,
             postingTimeFb: newPostingTimes.fb,
@@ -98,13 +102,6 @@ export async function movePostDay(
             postingTimeFbSource: "auto" as const,
             updatedAt: serverTimestamp(),
         });
-
-        // Remove legacy postingTime fields
-        delete (newDocData as any).postingTime;
-        delete (newDocData as any).postingTimeSource;
-
-        // Remove platform field if it exists (we're moving to single-doc model)
-        delete (newDocData as any).platform;
 
         // Write to target
         await setDoc(targetRef, newDocData);

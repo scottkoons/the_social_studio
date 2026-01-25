@@ -98,7 +98,6 @@ export function buildPlanSlots(
     // Get all days in range
     const allDays = eachDayOfInterval({ start, end });
     const totalDays = allDays.length;
-    const totalWeeks = Math.ceil(totalDays / 7);
 
     // Calculate total posts needed
     const targetTotalPosts = Math.round(postsPerWeek * (totalDays / 7));
@@ -125,12 +124,8 @@ export function buildPlanSlots(
     const slotsNeeded = Math.min(targetTotalPosts, availableDays.length);
 
     if (slotsNeeded > 0 && availableDays.length > 0) {
-        // Calculate interval to spread posts evenly
-        const interval = availableDays.length / slotsNeeded;
-
         // Group available days by week for even distribution
         const weekBuckets: Date[][] = [];
-        let currentWeekStart = start;
 
         for (const day of availableDays) {
             const weekIndex = Math.floor(differenceInDays(day, start) / 7);

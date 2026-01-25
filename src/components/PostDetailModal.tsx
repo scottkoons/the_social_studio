@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PostDay, PostDayAI } from "@/lib/types";
+import { PostDay } from "@/lib/types";
 import { formatDisplayDate } from "@/lib/utils";
 import { formatTimeForDisplay } from "@/lib/postingTime";
 import { X, Maximize2 } from "lucide-react";

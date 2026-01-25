@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db, functions, storage } from "@/lib/firebase";
-import { collection, query, onSnapshot, orderBy, doc, deleteDoc, getDoc } from "firebase/firestore";
+import { collection, query, onSnapshot, orderBy, doc, deleteDoc } from "firebase/firestore";
 import { ref, getDownloadURL } from "firebase/storage";
 import { httpsCallable } from "firebase/functions";
 import ReviewTable, { PlatformFilterValue } from "@/components/ReviewTable";
@@ -13,8 +13,13 @@ import Toast from "@/components/ui/Toast";
 import PlatformFilter from "@/components/ui/PlatformFilter";
 import BufferExportModal from "@/components/BufferExportModal";
 import PostsPdfPrintRoot from "@/components/PostsPdfPrintRoot";
-import { PostDay, getPostDocId } from "@/lib/types";
-import { Play, Download, FileText, Loader2, Trash2 } from "lucide-react";
+import MarkUploadedModal from "@/components/MarkUploadedModal";
+import ImportTextCsvModal from "@/components/ImportTextCsvModal";
+import LifecycleFilter, { LifecycleFilterValue } from "@/components/ui/LifecycleFilter";
+import { PostDay, getPostDocId, GenerationMode } from "@/lib/types";
+import { getLifecycleStatus, getLifecycleCounts, markPostsAsUploaded } from "@/lib/lifecycleService";
+import { generateTextCsv, downloadTextCsv, getTextExportFilename } from "@/lib/textCsvUtils";
+import { Play, Download, FileText, Loader2, Trash2, Upload, Instagram, Facebook, Calendar, Clock, FileUp, FileDown } from "lucide-react";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useHidePastUnsent } from "@/hooks/useHidePastUnsent";
 import { useWorkspaceUiSettings } from "@/hooks/useWorkspaceUiSettings";
@@ -28,6 +33,7 @@ interface GeneratePostCopyResponse {
     success: boolean;
     status: "generated" | "already_generated" | "error";
     message?: string;
+    avoidWordsUsage?: Record<string, number>;
 }
 
 export default function ReviewPage() {
@@ -59,8 +65,31 @@ export default function ReviewPage() {
     const [imageOnlyCount, setImageOnlyCount] = useState(0);
     const [pendingGenerateTargets, setPendingGenerateTargets] = useState<PostDay[]>([]);
 
+    // Lifecycle filter state
+    const [lifecycleFilter, setLifecycleFilter] = useState<LifecycleFilterValue>("all");
+    const [showMarkUploadedModal, setShowMarkUploadedModal] = useState(false);
+
+    // Text CSV import/export state
+    const [showImportTextModal, setShowImportTextModal] = useState(false);
+
+    // Generation mode: "fast" (concurrent) or "sequential" (for avoid-words tracking)
+    const [generationMode, setGenerationMode] = useState<"fast" | "sequential">("fast");
+
     // Use shared hook for filtering past unsent posts
-    const { filteredPosts, hidePastUnsent } = useHidePastUnsent(posts);
+    const { filteredPosts: postsWithoutPastUnsent, hidePastUnsent } = useHidePastUnsent(posts);
+
+    // Apply lifecycle filter
+    const filteredPosts = lifecycleFilter === "all"
+        ? postsWithoutPastUnsent
+        : postsWithoutPastUnsent.filter(
+              (p) => getLifecycleStatus(p) === lifecycleFilter
+          );
+
+    // Compute lifecycle counts for the filter badges
+    const lifecycleCounts = getLifecycleCounts(postsWithoutPastUnsent);
+
+    // Count exported posts for "Mark as Uploaded" button
+    const exportedCount = lifecycleCounts.exported;
 
     // Get current AI settings to pass emojiStyle to generate calls
     const { aiSettings } = useWorkspaceUiSettings();
@@ -172,12 +201,15 @@ export default function ReviewPage() {
                 };
                 requestId?: string;
                 emojiStyle?: EmojiStyle;
+                avoidWords?: string;
+                avoidWordsUsage?: Record<string, number>;
             },
             GeneratePostCopyResponse
         >(functions, "generatePostCopy");
 
-        // Pass current emojiStyle to ensure fresh settings are used
+        // Pass current settings to ensure fresh values are used
         const currentEmojiStyle = aiSettings.emojiStyle;
+        const currentAvoidWords = aiSettings.avoidWords;
 
         try {
             const result = await generatePostCopy({
@@ -187,6 +219,7 @@ export default function ReviewPage() {
                 previousOutputs,
                 requestId: crypto.randomUUID(),
                 emojiStyle: currentEmojiStyle,
+                avoidWords: currentAvoidWords,
             });
 
             if (result.data.status === "generated") {
@@ -204,7 +237,7 @@ export default function ReviewPage() {
                 return next;
             });
         }
-    }, [user, workspaceId, showToast, aiSettings.emojiStyle]);
+    }, [user, workspaceId, showToast, aiSettings.emojiStyle, aiSettings.avoidWords]);
 
     const handleDelete = useCallback(async (dateId: string) => {
         if (!workspaceId) return;
@@ -293,6 +326,8 @@ export default function ReviewPage() {
                 workspaceId: string;
                 dateId: string;
                 regenerate: boolean;
+                generationMode?: GenerationMode;
+                guidanceText?: string;
                 previousOutputs?: {
                     igCaption?: string;
                     igHashtags?: string[];
@@ -301,16 +336,23 @@ export default function ReviewPage() {
                 };
                 requestId?: string;
                 emojiStyle?: EmojiStyle;
+                avoidWords?: string;
+                avoidWordsUsage?: Record<string, number>;
             },
             GeneratePostCopyResponse
         >(functions, "generatePostCopy");
 
-        // Capture current emojiStyle at start of batch to ensure consistency
+        // Capture current settings at start of batch to ensure consistency
         const currentEmojiStyle = aiSettings.emojiStyle;
+        const currentAvoidWords = aiSettings.avoidWords;
+
+        // Track avoid words usage across the entire batch (only used in sequential mode)
+        let batchAvoidWordsUsage: Record<string, number> = {};
 
         let generated = 0;
         let regenerated = 0;
         let skippedPastUnsent = 0;
+        let skippedTextOnlyEmpty = 0;
         let failed = 0;
 
         const toProcess: { post: PostDay; hadExistingAi: boolean }[] = [];
@@ -322,80 +364,149 @@ export default function ReviewPage() {
                 continue;
             }
 
+            // Skip text-only posts with empty guidance text
+            const effectiveMode = post.generationMode || (post.imageAssetId ? (post.starterText ? "hybrid" : "image") : "text");
+            if (effectiveMode === "text" && (!post.starterText || post.starterText.trim() === "")) {
+                skippedTextOnlyEmpty++;
+                continue;
+            }
+
             const hadExistingAi = !!(post.ai?.ig?.caption || post.ai?.fb?.caption);
             toProcess.push({ post, hadExistingAi });
         }
 
-        const queue = [...toProcess];
-        const inFlight: Promise<void>[] = [];
+        if (generationMode === "sequential") {
+            // Sequential mode: Process posts one at a time to track avoid-words usage across batch
+            for (const item of toProcess) {
+                const { post, hadExistingAi } = item;
+                const docId = getPostDocId(post);
+                setGeneratingIds(prev => new Set(prev).add(docId));
 
-        const processOne = async (item: { post: PostDay; hadExistingAi: boolean }) => {
-            const { post, hadExistingAi } = item;
-            const docId = getPostDocId(post);
-            setGeneratingIds(prev => new Set(prev).add(docId));
+                try {
+                    const previousOutputs = hadExistingAi ? {
+                        igCaption: post.ai?.ig?.caption,
+                        igHashtags: post.ai?.ig?.hashtags,
+                        fbCaption: post.ai?.fb?.caption,
+                        fbHashtags: post.ai?.fb?.hashtags,
+                    } : undefined;
 
-            try {
-                const previousOutputs = hadExistingAi ? {
-                    igCaption: post.ai?.ig?.caption,
-                    igHashtags: post.ai?.ig?.hashtags,
-                    fbCaption: post.ai?.fb?.caption,
-                    fbHashtags: post.ai?.fb?.hashtags,
-                } : undefined;
+                    const result = await generatePostCopy({
+                        workspaceId,
+                        dateId: docId,
+                        regenerate: true,
+                        generationMode: post.generationMode,
+                        guidanceText: post.starterText,
+                        previousOutputs,
+                        requestId: crypto.randomUUID(),
+                        emojiStyle: currentEmojiStyle,
+                        avoidWords: currentAvoidWords,
+                        avoidWordsUsage: batchAvoidWordsUsage,
+                    });
 
-                const result = await generatePostCopy({
-                    workspaceId,
-                    dateId: docId,
-                    regenerate: true,
-                    previousOutputs,
-                    requestId: crypto.randomUUID(),
-                    emojiStyle: currentEmojiStyle,
-                });
-
-                if (result.data.status === "generated") {
-                    if (hadExistingAi) {
-                        regenerated++;
-                    } else {
-                        generated++;
+                    if (result.data.status === "generated") {
+                        if (hadExistingAi) {
+                            regenerated++;
+                        } else {
+                            generated++;
+                        }
+                        // Update batch usage from response for next iteration
+                        if (result.data.avoidWordsUsage) {
+                            batchAvoidWordsUsage = result.data.avoidWordsUsage;
+                        }
                     }
+                } catch (err) {
+                    console.error(`Generate error for ${docId}:`, err);
+                    failed++;
+                } finally {
+                    setGeneratingIds(prev => {
+                        const next = new Set(prev);
+                        next.delete(docId);
+                        return next;
+                    });
                 }
-            } catch (err) {
-                console.error(`Generate error for ${docId}:`, err);
-                failed++;
-            } finally {
-                setGeneratingIds(prev => {
-                    const next = new Set(prev);
-                    next.delete(docId);
-                    return next;
-                });
             }
-        };
+        } else {
+            // Fast mode: Process posts concurrently (no cross-batch avoid-words tracking)
+            const queue = [...toProcess];
+            const inFlight: Promise<void>[] = [];
 
-        while (queue.length > 0 || inFlight.length > 0) {
-            while (queue.length > 0 && inFlight.length < CONCURRENCY_LIMIT) {
-                const item = queue.shift()!;
-                const promise = processOne(item).then(() => {
-                    const idx = inFlight.indexOf(promise);
-                    if (idx > -1) inFlight.splice(idx, 1);
-                });
-                inFlight.push(promise);
-            }
+            const processOne = async (item: { post: PostDay; hadExistingAi: boolean }) => {
+                const { post, hadExistingAi } = item;
+                const docId = getPostDocId(post);
+                setGeneratingIds(prev => new Set(prev).add(docId));
 
-            if (inFlight.length > 0) {
-                await Promise.race(inFlight);
+                try {
+                    const previousOutputs = hadExistingAi ? {
+                        igCaption: post.ai?.ig?.caption,
+                        igHashtags: post.ai?.ig?.hashtags,
+                        fbCaption: post.ai?.fb?.caption,
+                        fbHashtags: post.ai?.fb?.hashtags,
+                    } : undefined;
+
+                    const result = await generatePostCopy({
+                        workspaceId,
+                        dateId: docId,
+                        regenerate: true,
+                        generationMode: post.generationMode,
+                        guidanceText: post.starterText,
+                        previousOutputs,
+                        requestId: crypto.randomUUID(),
+                        emojiStyle: currentEmojiStyle,
+                        avoidWords: currentAvoidWords,
+                        // No batch usage tracking in fast mode
+                    });
+
+                    if (result.data.status === "generated") {
+                        if (hadExistingAi) {
+                            regenerated++;
+                        } else {
+                            generated++;
+                        }
+                    }
+                } catch (err) {
+                    console.error(`Generate error for ${docId}:`, err);
+                    failed++;
+                } finally {
+                    setGeneratingIds(prev => {
+                        const next = new Set(prev);
+                        next.delete(docId);
+                        return next;
+                    });
+                }
+            };
+
+            while (queue.length > 0 || inFlight.length > 0) {
+                while (queue.length > 0 && inFlight.length < CONCURRENCY_LIMIT) {
+                    const item = queue.shift()!;
+                    const promise = processOne(item).then(() => {
+                        const idx = inFlight.indexOf(promise);
+                        if (idx > -1) inFlight.splice(idx, 1);
+                    });
+                    inFlight.push(promise);
+                }
+
+                if (inFlight.length > 0) {
+                    await Promise.race(inFlight);
+                }
             }
         }
 
         setIsGenerating(false);
 
         const totalProcessed = generated + regenerated;
+        const totalSkipped = skippedPastUnsent + skippedTextOnlyEmpty;
 
-        if (totalProcessed === 0 && skippedPastUnsent > 0) {
-            showToast('warn', `Skipped all: ${skippedPastUnsent} past unsent.`);
-        } else if (failed > 0 || skippedPastUnsent > 0) {
+        if (totalProcessed === 0 && totalSkipped > 0) {
+            const skipReasons: string[] = [];
+            if (skippedPastUnsent > 0) skipReasons.push(`${skippedPastUnsent} past unsent`);
+            if (skippedTextOnlyEmpty > 0) skipReasons.push(`${skippedTextOnlyEmpty} text-only without guidance`);
+            showToast('warn', `Skipped all: ${skipReasons.join(', ')}.`);
+        } else if (failed > 0 || totalSkipped > 0) {
             const parts: string[] = [];
             if (generated > 0) parts.push(`Generated ${generated}`);
             if (regenerated > 0) parts.push(`Regenerated ${regenerated}`);
             if (skippedPastUnsent > 0) parts.push(`Skipped ${skippedPastUnsent} (past unsent)`);
+            if (skippedTextOnlyEmpty > 0) parts.push(`Skipped ${skippedTextOnlyEmpty} (text-only, no guidance)`);
             if (failed > 0) parts.push(`Failed ${failed}`);
             showToast('warn', parts.join(' • '));
         } else if (generated > 0 && regenerated > 0) {
@@ -407,11 +518,55 @@ export default function ReviewPage() {
         }
     };
 
-    const handleExportComplete = useCallback((summary: { exported: number; skipped: number }) => {
+    const handleExportComplete = useCallback((summary: { exported: number; skipped: number; exportedPostIds: string[] }) => {
         if (summary.skipped > 0) {
             showToast('warn', `Exported ${summary.exported} posts. Skipped ${summary.skipped} (missing image or caption).`);
         } else {
             showToast('success', `Exported ${summary.exported} post${summary.exported !== 1 ? 's' : ''} for Buffer.`);
+        }
+    }, [showToast]);
+
+    // Handler for marking exported posts as uploaded
+    const handleMarkAsUploaded = useCallback(async () => {
+        if (!workspaceId) return;
+        const result = await markPostsAsUploaded({ workspaceId });
+        showToast('success', `Marked ${result.updatedCount} post${result.updatedCount !== 1 ? 's' : ''} as uploaded.`);
+    }, [workspaceId, showToast]);
+
+    // Find next planned posts (first future post with status uploaded or exported for each platform)
+    const getNextPlannedPost = useCallback((platform: "instagram" | "facebook") => {
+        const today = new Date().toISOString().split('T')[0];
+        const futurePosts = postsWithoutPastUnsent
+            .filter(p => p.date >= today)
+            .filter(p => !p.platform || p.platform === platform)
+            .filter(p => {
+                const status = getLifecycleStatus(p);
+                return status === "exported" || status === "uploaded";
+            })
+            .sort((a, b) => a.date.localeCompare(b.date));
+
+        return futurePosts[0];
+    }, [postsWithoutPastUnsent]);
+
+    // Text CSV export handler
+    const handleExportTextCsv = useCallback(() => {
+        const postsToExport = selectedIds.size > 0
+            ? filteredPosts.filter(p => selectedIds.has(getPostDocId(p)))
+            : filteredPosts;
+
+        const csv = generateTextCsv(postsToExport);
+        const filename = getTextExportFilename();
+        downloadTextCsv(csv, filename);
+
+        showToast('success', `Exported text for ${postsToExport.length} post${postsToExport.length !== 1 ? 's' : ''}.`);
+    }, [selectedIds, filteredPosts, showToast]);
+
+    // Text CSV import complete handler
+    const handleImportTextComplete = useCallback((summary: { updated: number; skipped: number }) => {
+        if (summary.skipped > 0) {
+            showToast('warn', `Updated ${summary.updated} caption${summary.updated !== 1 ? 's' : ''}. ${summary.skipped} row${summary.skipped !== 1 ? 's' : ''} skipped (not found).`);
+        } else {
+            showToast('success', `Updated ${summary.updated} caption${summary.updated !== 1 ? 's' : ''}.`);
         }
     }, [showToast]);
 
@@ -480,6 +635,32 @@ export default function ReviewPage() {
                 subtitle="Fine-tune AI output and push to social channels."
                 actions={
                     <>
+                        {/* Generation Mode Toggle */}
+                        <div className="flex items-center gap-2 mr-2">
+                            <button
+                                onClick={() => setGenerationMode(generationMode === "fast" ? "sequential" : "fast")}
+                                disabled={isGenerating}
+                                className={`
+                                    relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent
+                                    transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] focus:ring-offset-2
+                                    disabled:opacity-50 disabled:cursor-not-allowed
+                                    ${generationMode === "sequential" ? 'bg-purple-500' : 'bg-[var(--bg-tertiary)]'}
+                                `}
+                                title={generationMode === "sequential" ? "Sequential mode: Tracks avoid-words across batch" : "Fast mode: Concurrent processing"}
+                            >
+                                <span
+                                    className={`
+                                        pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0
+                                        transition duration-200 ease-in-out
+                                        ${generationMode === "sequential" ? 'translate-x-5' : 'translate-x-0'}
+                                    `}
+                                />
+                            </button>
+                            <span className="text-xs text-[var(--text-secondary)]" title={generationMode === "sequential" ? "Processes posts one at a time to enforce avoid-words limits across batch" : "Processes multiple posts at once (faster)"}>
+                                {generationMode === "sequential" ? "Sequential" : "Fast"}
+                            </span>
+                        </div>
+
                         <button
                             onClick={handleGenerateClick}
                             disabled={isGenerating}
@@ -507,6 +688,16 @@ export default function ReviewPage() {
                             Export for Buffer
                         </button>
 
+                        {exportedCount > 0 && (
+                            <button
+                                onClick={() => setShowMarkUploadedModal(true)}
+                                className="inline-flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+                            >
+                                <Upload size={16} />
+                                Mark Uploaded ({exportedCount})
+                            </button>
+                        )}
+
                         {selectedIds.size > 0 && (
                             <button
                                 onClick={() => setShowBulkDeleteModal(true)}
@@ -520,11 +711,141 @@ export default function ReviewPage() {
                 }
             />
 
+            {/* Workflow Summary */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                {/* Status Counts */}
+                <div className="bg-[var(--bg-card)] rounded-lg p-4 border border-[var(--border-primary)]">
+                    <h4 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">
+                        Workflow Status
+                    </h4>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="flex justify-between">
+                            <span className="text-[var(--text-muted)]">Draft</span>
+                            <span className="font-medium text-[var(--text-primary)]">{lifecycleCounts.draft}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-amber-600 dark:text-amber-400">Exported</span>
+                            <span className="font-medium text-amber-600 dark:text-amber-400">{lifecycleCounts.exported}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-blue-600 dark:text-blue-400">Uploaded</span>
+                            <span className="font-medium text-blue-600 dark:text-blue-400">{lifecycleCounts.uploaded}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-emerald-600 dark:text-emerald-400">Posted</span>
+                            <span className="font-medium text-emerald-600 dark:text-emerald-400">{lifecycleCounts.posted}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Next Planned IG Post */}
+                <div className="bg-[var(--bg-card)] rounded-lg p-4 border border-[var(--border-primary)]">
+                    <h4 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <Instagram size={14} className="text-pink-500" />
+                        Next Instagram Post
+                    </h4>
+                    {(() => {
+                        const nextIg = getNextPlannedPost("instagram");
+                        if (nextIg) {
+                            return (
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2 text-sm">
+                                        <Calendar size={14} className="text-[var(--text-muted)]" />
+                                        <span className="font-medium text-[var(--text-primary)]">
+                                            {new Date(nextIg.date + 'T12:00:00').toLocaleDateString('en-US', {
+                                                weekday: 'short',
+                                                month: 'short',
+                                                day: 'numeric',
+                                            })}
+                                        </span>
+                                    </div>
+                                    {nextIg.postingTimeIg && (
+                                        <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                                            <Clock size={14} className="text-[var(--text-muted)]" />
+                                            <span>{nextIg.postingTimeIg}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        }
+                        return (
+                            <p className="text-sm text-[var(--text-muted)]">No scheduled posts</p>
+                        );
+                    })()}
+                </div>
+
+                {/* Next Planned FB Post */}
+                <div className="bg-[var(--bg-card)] rounded-lg p-4 border border-[var(--border-primary)]">
+                    <h4 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <Facebook size={14} className="text-blue-500" />
+                        Next Facebook Post
+                    </h4>
+                    {(() => {
+                        const nextFb = getNextPlannedPost("facebook");
+                        if (nextFb) {
+                            return (
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2 text-sm">
+                                        <Calendar size={14} className="text-[var(--text-muted)]" />
+                                        <span className="font-medium text-[var(--text-primary)]">
+                                            {new Date(nextFb.date + 'T12:00:00').toLocaleDateString('en-US', {
+                                                weekday: 'short',
+                                                month: 'short',
+                                                day: 'numeric',
+                                            })}
+                                        </span>
+                                    </div>
+                                    {nextFb.postingTimeFb && (
+                                        <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                                            <Clock size={14} className="text-[var(--text-muted)]" />
+                                            <span>{nextFb.postingTimeFb}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        }
+                        return (
+                            <p className="text-sm text-[var(--text-muted)]">No scheduled posts</p>
+                        );
+                    })()}
+                </div>
+            </div>
+
             {/* Secondary actions row with filters and PDF export */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-                <PlatformFilter value={platformFilter} onChange={setPlatformFilter} />
+                <div className="flex flex-wrap items-center gap-3">
+                    <PlatformFilter value={platformFilter} onChange={setPlatformFilter} />
+                    <LifecycleFilter
+                        value={lifecycleFilter}
+                        onChange={setLifecycleFilter}
+                        counts={lifecycleCounts}
+                    />
+                </div>
 
                 <div className="flex items-center gap-3">
+                    {/* Text CSV Export/Import */}
+                    <button
+                        onClick={handleExportTextCsv}
+                        disabled={filteredPosts.length === 0}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                        title="Export post text to CSV"
+                    >
+                        <FileDown size={14} />
+                        Export Text
+                    </button>
+                    <button
+                        onClick={() => setShowImportTextModal(true)}
+                        disabled={filteredPosts.length === 0}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[var(--text-secondary)] bg-[var(--bg-tertiary)] hover:bg-[var(--bg-card-hover)] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                        title="Import post text from CSV"
+                    >
+                        <FileUp size={14} />
+                        Import Text
+                    </button>
+
+                    <div className="w-px h-6 bg-[var(--border-primary)]" />
+
+                    {/* PDF Export */}
                     <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
                         <input
                             type="checkbox"
@@ -561,7 +882,7 @@ export default function ReviewPage() {
 
             {/* AI behavior note */}
             <p className="text-xs text-[var(--text-muted)] mb-3">
-                AI generates captions from your description only. Images are ignored.
+                AI generates captions based on each post&apos;s generation mode: Image (analyze image), Hybrid (image + guidance), or Text (guidance only).
             </p>
 
             {/* Posts PDF Error/Warning Display */}
@@ -674,6 +995,25 @@ export default function ReviewPage() {
                     setPendingGenerateTargets([]);
                 }}
             />
+
+            {/* Mark as Uploaded Modal */}
+            <MarkUploadedModal
+                open={showMarkUploadedModal}
+                exportedCount={exportedCount}
+                onClose={() => setShowMarkUploadedModal(false)}
+                onConfirm={handleMarkAsUploaded}
+            />
+
+            {/* Import Text CSV Modal */}
+            {workspaceId && (
+                <ImportTextCsvModal
+                    open={showImportTextModal}
+                    posts={filteredPosts}
+                    workspaceId={workspaceId}
+                    onClose={() => setShowImportTextModal(false)}
+                    onImportComplete={handleImportTextComplete}
+                />
+            )}
         </div>
     );
 }

@@ -21,6 +21,7 @@ interface TableRowProps {
     onHighlightClear: () => void;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export default function TableRow({ post, allPostDates, isSelected, onSelect, isHighlighted, onHighlightClear }: TableRowProps) {
     const { user, workspaceId } = useAuth();
     const [starterText, setStarterText] = useState(post.starterText || "");

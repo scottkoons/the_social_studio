@@ -337,17 +337,12 @@ export default function CalendarPage() {
         if (!workspaceId || selectedPostIds.size === 0) return;
 
         setIsBulkDeleting(true);
-        let deleted = 0;
-        let failed = 0;
-
         for (const docId of selectedPostIds) {
             try {
                 const docRef = doc(db, "workspaces", workspaceId, "post_days", docId);
                 await deleteDoc(docRef);
-                deleted++;
             } catch (err) {
                 console.error(`Delete error for ${docId}:`, err);
-                failed++;
             }
         }
 

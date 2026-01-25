@@ -625,6 +625,180 @@ function enforceEmojiLimit(caption: string, emojiStyle: EmojiStyleType): EmojiEn
   };
 }
 
+// ============================================================================
+// Avoid Words Utilities for Post-Processing Enforcement
+// ============================================================================
+
+// Synonym map for replacing avoided words
+const AVOID_WORDS_SYNONYMS: Record<string, string[]> = {
+  indulge: ["enjoy", "dig into", "try", "savor", "stop in for"],
+  // Add more mappings as needed
+};
+
+// Parse comma-separated avoid words string into array
+function parseAvoidWords(avoidWordsStr: string): string[] {
+  if (!avoidWordsStr || !avoidWordsStr.trim()) return [];
+  return avoidWordsStr
+    .split(",")
+    .map(w => w.trim().toLowerCase())
+    .filter(w => w.length > 0);
+}
+
+// Check if text starts with any avoided word (case-insensitive)
+function startsWithAvoidedWord(text: string, avoidWords: string[]): string | null {
+  const lowerText = text.toLowerCase().trim();
+  for (const word of avoidWords) {
+    // Check if starts with the word followed by space or punctuation
+    const pattern = new RegExp(`^${escapeRegex(word)}(?:\\s|[.,!?;:]|$)`, "i");
+    if (pattern.test(lowerText)) {
+      return word;
+    }
+  }
+  return null;
+}
+
+// Escape special regex characters
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Get a random synonym for an avoided word
+function getSynonym(word: string): string {
+  const lowerWord = word.toLowerCase();
+  const synonyms = AVOID_WORDS_SYNONYMS[lowerWord];
+  if (synonyms && synonyms.length > 0) {
+    return synonyms[Math.floor(Math.random() * synonyms.length)];
+  }
+  // Default fallback synonyms if no specific mapping
+  const defaultSynonyms = ["enjoy", "try", "check out", "experience"];
+  return defaultSynonyms[Math.floor(Math.random() * defaultSynonyms.length)];
+}
+
+// Replace avoided word with synonym (preserves case of first letter)
+function replaceAvoidedWord(text: string, word: string, synonym: string): string {
+  const pattern = new RegExp(`\\b${escapeRegex(word)}\\b`, "gi");
+  return text.replace(pattern, (match) => {
+    // Preserve capitalization
+    if (match[0] === match[0].toUpperCase()) {
+      return synonym.charAt(0).toUpperCase() + synonym.slice(1);
+    }
+    return synonym;
+  });
+}
+
+// Rewrite first sentence if it starts with avoided word
+function rewriteFirstSentence(text: string, avoidedWord: string): string {
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  if (sentences.length === 0) return text;
+
+  const firstSentence = sentences[0];
+  const synonym = getSynonym(avoidedWord);
+
+  // Replace the avoided word at the start with the synonym
+  const pattern = new RegExp(`^${escapeRegex(avoidedWord)}`, "i");
+  sentences[0] = firstSentence.replace(pattern, (match) => {
+    if (match[0] === match[0].toUpperCase()) {
+      return synonym.charAt(0).toUpperCase() + synonym.slice(1);
+    }
+    return synonym;
+  });
+
+  return sentences.join(" ");
+}
+
+// Batch tracking for avoid-word frequency limits
+interface AvoidWordsUsageTracker {
+  usage: Map<string, number>;
+  maxPerBatch: number;
+}
+
+function createAvoidWordsTracker(
+  maxPerBatch: number = 1,
+  initialUsage?: Record<string, number>
+): AvoidWordsUsageTracker {
+  const usage = new Map<string, number>();
+  if (initialUsage) {
+    for (const [word, count] of Object.entries(initialUsage)) {
+      usage.set(word, count);
+    }
+  }
+  return {
+    usage,
+    maxPerBatch,
+  };
+}
+
+// Convert tracker usage to plain object for response
+function trackerUsageToObject(tracker: AvoidWordsUsageTracker): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const [word, count] of tracker.usage) {
+    result[word] = count;
+  }
+  return result;
+}
+
+// Enforce avoid-words rules on a caption
+function enforceAvoidWords(
+  caption: string,
+  avoidWords: string[],
+  tracker: AvoidWordsUsageTracker
+): string {
+  if (avoidWords.length === 0) return caption;
+
+  let result = caption;
+
+  // Rule 1: Never start with an avoided word
+  const startsWithAvoided = startsWithAvoidedWord(result, avoidWords);
+  if (startsWithAvoided) {
+    result = rewriteFirstSentence(result, startsWithAvoided);
+    console.info(`[AvoidWords] Rewrote first sentence starting with "${startsWithAvoided}"`);
+  }
+
+  // Rule 2: Enforce frequency limit across batch
+  for (const word of avoidWords) {
+    const pattern = new RegExp(`\\b${escapeRegex(word)}\\b`, "gi");
+    const matches = result.match(pattern);
+
+    if (matches && matches.length > 0) {
+      const currentUsage = tracker.usage.get(word) || 0;
+      const allowedRemaining = tracker.maxPerBatch - currentUsage;
+
+      if (allowedRemaining <= 0) {
+        // Already exceeded - replace all occurrences
+        const synonym = getSynonym(word);
+        result = replaceAvoidedWord(result, word, synonym);
+        console.info(`[AvoidWords] Replaced all "${word}" with "${synonym}" (batch limit exceeded)`);
+      } else if (matches.length > allowedRemaining) {
+        // Need to replace some occurrences
+        let replaced = 0;
+        const toReplace = matches.length - allowedRemaining;
+
+        result = result.replace(pattern, (match) => {
+          if (replaced < toReplace) {
+            replaced++;
+            const synonym = getSynonym(word);
+            // Preserve capitalization
+            if (match[0] === match[0].toUpperCase()) {
+              return synonym.charAt(0).toUpperCase() + synonym.slice(1);
+            }
+            return synonym;
+          }
+          return match;
+        });
+
+        // Track usage
+        tracker.usage.set(word, currentUsage + allowedRemaining);
+        console.info(`[AvoidWords] Replaced ${toReplace} of ${matches.length} "${word}" occurrences`);
+      } else {
+        // All occurrences are within limit
+        tracker.usage.set(word, currentUsage + matches.length);
+      }
+    }
+  }
+
+  return result;
+}
+
 interface PreviousOutputs {
   igCaption?: string;
   igHashtags?: string[];
@@ -636,15 +810,20 @@ interface GeneratePostCopyRequest {
   workspaceId: string;
   dateId: string;
   regenerate?: boolean;
+  generationMode?: "image" | "hybrid" | "text"; // Explicit generation mode (overrides auto-detection)
+  guidanceText?: string; // Guidance text for hybrid/text modes (overrides post's starterText)
   previousOutputs?: PreviousOutputs;
   requestId?: string;
   emojiStyle?: "low" | "medium" | "high"; // Required for regenerate, uses workspace setting as fallback
+  avoidWords?: string; // Comma-separated list of words to avoid
+  avoidWordsUsage?: Record<string, number>; // Current usage counts for batch tracking
 }
 
 interface GeneratePostCopyResponse {
   success: boolean;
   status: "generated" | "already_generated" | "error";
   message?: string;
+  avoidWordsUsage?: Record<string, number>; // Updated usage counts for batch tracking
 }
 
 interface AIOutputSchema {
@@ -661,7 +840,8 @@ function buildPrompt(
   emojiStyle: "low" | "medium" | "high",
   dateStr: string,
   isRegenerate: boolean = false,
-  previousOutputs?: PreviousOutputs
+  previousOutputs?: PreviousOutputs,
+  avoidWords: string[] = []
 ): string {
   const hashtagCounts = {
     light: { ig: "5-8", fb: "3-5" },
@@ -693,6 +873,15 @@ function buildPrompt(
     ? `\n\n**MANDATORY BRAND VOICE INSTRUCTIONS** (YOU MUST FOLLOW THESE EXACTLY):\n${brandVoice}\n\nThe above brand voice instructions are CRITICAL and MUST be followed precisely. Do not ignore them.`
     : "";
 
+  // Build avoid-words instruction if any are specified
+  const avoidWordsContext = avoidWords.length > 0
+    ? `\n\n**AVOID WORDS RULES** (CRITICAL - MUST FOLLOW):
+- NEVER start a post with any of these words: ${avoidWords.join(", ")}
+- Avoid using these words entirely when possible
+- If absolutely necessary, use each avoided word at most ONCE across ALL posts
+- Avoided words: ${avoidWords.join(", ")}`
+    : "";
+
   // Build regeneration context to avoid repeating previous outputs
   let regenerateContext = "";
   if (isRegenerate && previousOutputs) {
@@ -722,7 +911,7 @@ ${avoidPhrases.join("\n")}`;
 
   return `You are a social media copywriter creating Instagram and Facebook posts.
 
-${contextInfo}${brandContext}${regenerateContext}
+${contextInfo}${brandContext}${avoidWordsContext}${regenerateContext}
 
 CRITICAL RULES:
 - Use ONLY the user-provided text above. Nothing else.
@@ -771,7 +960,8 @@ function buildVisionPrompt(
   emojiStyle: "low" | "medium" | "high",
   dateStr: string,
   isRegenerate: boolean = false,
-  previousOutputs?: PreviousOutputs
+  previousOutputs?: PreviousOutputs,
+  avoidWords: string[] = []
 ): string {
   const hashtagCounts = {
     light: { ig: "5-8", fb: "3-5" },
@@ -791,6 +981,14 @@ function buildVisionPrompt(
 
   const brandContext = brandVoice
     ? `\n\n**MANDATORY BRAND VOICE INSTRUCTIONS** (YOU MUST FOLLOW THESE EXACTLY):\n${brandVoice}\n\nThe above brand voice instructions are CRITICAL and MUST be followed precisely.`
+    : "";
+
+  // Build avoid-words instruction if any are specified
+  const avoidWordsContext = avoidWords.length > 0
+    ? `\n\n**AVOID WORDS RULES** (CRITICAL):
+- NEVER start a post with: ${avoidWords.join(", ")}
+- Avoid these words entirely when possible
+- Avoided words: ${avoidWords.join(", ")}`
     : "";
 
   let regenerateContext = "";
@@ -815,7 +1013,7 @@ IMPORTANT - Image Analysis Instructions:
 3. Use the visual details and any text to write relevant, specific captions
 4. If you see food/drink items, describe them appetizingly
 5. If you see promotional text or specials, incorporate that information
-6. If you see an event or atmosphere, capture that energy${brandContext}${regenerateContext}
+6. If you see an event or atmosphere, capture that energy${brandContext}${avoidWordsContext}${regenerateContext}
 
 Create engaging captions for Instagram and Facebook based on what you see in the image.
 
@@ -834,6 +1032,95 @@ Return ONLY valid JSON (no markdown, no code blocks):
   "ig": { "caption": "Caption text WITHOUT hashtags", "hashtags": ["#tag1", "#tag2"] },
   "fb": { "caption": "Caption text WITHOUT hashtags", "hashtags": ["#tag1", "#tag2"] },
   "confidence": 0.85,
+  "needsInfo": false
+}`;
+}
+
+/**
+ * Builds a hybrid prompt for when there's both an image AND guidance text.
+ * The AI will analyze the image but prioritize the guidance text for context.
+ */
+function buildHybridPrompt(
+  guidanceText: string,
+  brandVoice: string,
+  hashtagStyle: "light" | "medium" | "heavy",
+  emojiStyle: "low" | "medium" | "high",
+  dateStr: string,
+  isRegenerate: boolean = false,
+  previousOutputs?: PreviousOutputs,
+  avoidWords: string[] = []
+): string {
+  const hashtagCounts = {
+    light: { ig: "5-8", fb: "3-5" },
+    medium: { ig: "10-15", fb: "5-8" },
+    heavy: { ig: "15-20", fb: "8-10" },
+  };
+
+  const counts = hashtagCounts[hashtagStyle] || hashtagCounts.medium;
+
+  const emojiInstructions = {
+    low: "EMOJI RULE: Use 0 or 1 emoji MAXIMUM per caption. Keep it minimal.",
+    medium: "EMOJI RULE: You MUST use EXACTLY 2-4 emojis per caption. This is REQUIRED - no fewer than 2, no more than 4.",
+    high: "EMOJI RULE: You MUST use EXACTLY 5-8 emojis per caption. This is REQUIRED - no fewer than 5, no more than 8.",
+  };
+
+  const emojiGuidance = emojiInstructions[emojiStyle] || emojiInstructions.low;
+
+  const brandContext = brandVoice
+    ? `\n\n**MANDATORY BRAND VOICE INSTRUCTIONS** (YOU MUST FOLLOW THESE EXACTLY):\n${brandVoice}\n\nThe above brand voice instructions are CRITICAL and MUST be followed precisely.`
+    : "";
+
+  const avoidWordsContext = avoidWords.length > 0
+    ? `\n\n**AVOID WORDS RULES** (CRITICAL):
+- NEVER start a post with: ${avoidWords.join(", ")}
+- Avoid these words entirely when possible
+- Avoided words: ${avoidWords.join(", ")}`
+    : "";
+
+  let regenerateContext = "";
+  if (isRegenerate && previousOutputs) {
+    const avoidPhrases: string[] = [];
+    if (previousOutputs.igCaption) {
+      avoidPhrases.push(`Previous IG caption: "${previousOutputs.igCaption}"`);
+    }
+    if (previousOutputs.fbCaption) {
+      avoidPhrases.push(`Previous FB caption: "${previousOutputs.fbCaption}"`);
+    }
+    if (avoidPhrases.length > 0) {
+      regenerateContext = `\n\nREGENERATION: Produce DIFFERENT content from:\n${avoidPhrases.join("\n")}`;
+    }
+  }
+
+  return `You are a social media copywriter. You have BOTH an image AND guidance text to work with.
+
+**GUIDANCE TEXT (PRIMARY CONTEXT - USE THIS!):**
+"${guidanceText}"
+
+IMPORTANT - Combined Analysis Instructions:
+1. The guidance text above tells you what this post is about - USE IT!
+2. Also analyze the image for visual details that complement the guidance
+3. The guidance text takes priority - it tells you the topic, promotion, or message
+4. Use visual details from the image to make the post more vivid and specific
+5. If the image shows food/drinks, describe them appetizingly in context of the guidance
+6. Incorporate any text visible in the image if relevant${brandContext}${avoidWordsContext}${regenerateContext}
+
+Create engaging captions for Instagram and Facebook that combine the guidance with visual appeal.
+
+Requirements:
+- Instagram caption: 1-3 short paragraphs, engaging and on-topic
+- Facebook caption: Slightly longer, conversational, informative
+- ${emojiGuidance}
+- CRITICAL: Do NOT include hashtags in the caption text. Hashtags go ONLY in the hashtags array.
+- Instagram hashtags: ${counts.ig} relevant tags (in the hashtags array only)
+- Facebook hashtags: ${counts.fb} relevant tags (in the hashtags array only)
+- All hashtags MUST include the "#" symbol
+- Keep the tone upbeat, inviting, and on-brand
+
+Return ONLY valid JSON (no markdown, no code blocks):
+{
+  "ig": { "caption": "Caption text WITHOUT hashtags", "hashtags": ["#tag1", "#tag2"] },
+  "fb": { "caption": "Caption text WITHOUT hashtags", "hashtags": ["#tag1", "#tag2"] },
+  "confidence": 0.9,
   "needsInfo": false
 }`;
 }
@@ -997,6 +1284,14 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
 
     console.info(`[EmojiStyle] Using emojiStyle="${emojiStyle}" (request=${requestEmojiStyle}, workspace=${workspaceEmojiStyle})`);
 
+    // Get avoidWords: prefer request value, fall back to workspace setting
+    const requestAvoidWords = request.data.avoidWords;
+    const workspaceAvoidWords = workspaceData.settings?.ai?.avoidWords || "indulge";
+    const avoidWordsStr = requestAvoidWords !== undefined ? requestAvoidWords : workspaceAvoidWords;
+    const avoidWords = parseAvoidWords(avoidWordsStr);
+
+    console.info(`[AvoidWords] Using avoidWords: ${avoidWords.length > 0 ? avoidWords.join(", ") : "(none)"}`);
+
     // 7. Get OpenAI client
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -1004,10 +1299,16 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
     }
     const openai = new OpenAI({ apiKey });
 
-    // 8. Determine generation mode: text-based or image-based
-    const starterText = postData.starterText;
-    const hasStarterText = !!starterText && starterText.trim().length > 0;
+    // 8. Determine generation mode: text-based, image-based, or hybrid
+    // Request can override with explicit generationMode and guidanceText
+    const requestGenerationMode = request.data.generationMode;
+    const requestGuidanceText = request.data.guidanceText;
+
+    // Get guidance text: prefer request value, fall back to post's starterText
+    const guidanceText = requestGuidanceText !== undefined ? requestGuidanceText : postData.starterText;
+    const hasGuidanceText = !!guidanceText && guidanceText.trim().length > 0;
     const hasImage = !!postData.imageAssetId;
+
 
     // Get image URL - either from post data or by fetching from asset/storage
     let imageUrl = postData.imageUrl || postData.downloadUrl;
@@ -1063,16 +1364,45 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
       };
     }
 
-    // Decide which mode to use
-    const useVision = !hasStarterText && hasImage && imageUrl;
+    // Decide which mode to use based on explicit generationMode or auto-detect
+    // Modes: "image" (vision only), "hybrid" (vision + text), "text" (text only)
+    let effectiveMode: "image" | "hybrid" | "text";
+
+    if (requestGenerationMode) {
+      // Explicit mode from request - respect it
+      effectiveMode = requestGenerationMode;
+    } else if (postData.generationMode) {
+      // Mode saved on post document
+      effectiveMode = postData.generationMode;
+    } else {
+      // Auto-detect based on what's available (legacy behavior)
+      if (hasImage && hasGuidanceText) {
+        effectiveMode = "hybrid";
+      } else if (hasImage) {
+        effectiveMode = "image";
+      } else {
+        effectiveMode = "text";
+      }
+    }
+
+    // Determine if we need vision capabilities
+    const useVision = (effectiveMode === "image" || effectiveMode === "hybrid") && hasImage && imageUrl;
     const modelName = useVision ? MODEL_NAME_VISION : MODEL_NAME_TEXT;
 
-    console.info(`[GenerateMode] starterText=${hasStarterText}, hasImage=${hasImage}, useVision=${useVision}, model=${modelName}`);
+    console.info(`[GenerateMode] effectiveMode=${effectiveMode}, hasGuidanceText=${hasGuidanceText}, hasImage=${hasImage}, useVision=${useVision}, model=${modelName}`);
 
-    // Build appropriate prompt
-    const prompt = hasStarterText
-      ? buildPrompt(starterText, brandVoice, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs)
-      : buildVisionPrompt(brandVoice, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs);
+    // Build appropriate prompt based on effective mode
+    let prompt: string;
+    if (effectiveMode === "hybrid" && hasGuidanceText) {
+      // Hybrid mode: image + guidance text
+      prompt = buildHybridPrompt(guidanceText!, brandVoice, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs, avoidWords);
+    } else if (effectiveMode === "image") {
+      // Image-only mode: vision prompt
+      prompt = buildVisionPrompt(brandVoice, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs, avoidWords);
+    } else {
+      // Text mode: text-only prompt (including fallback when guidance text is missing for hybrid)
+      prompt = buildPrompt(guidanceText, brandVoice, hashtagStyle, emojiStyle, dateId, regenerate, prevOutputs, avoidWords);
+    }
 
     // Generate unique request ID for cache-busting and prompt variation
     const requestId = request.data.requestId || randomUUID();
@@ -1102,11 +1432,26 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
           ? ` BRAND VOICE REQUIREMENT: You MUST follow these brand voice instructions exactly: "${brandVoice}".`
           : "";
 
-        // Build messages based on mode (text-only vs vision)
+        // Build messages based on effective mode
         let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
-        if (useVision && imageUrl) {
-          // Vision mode: include image
+        if (effectiveMode === "hybrid" && useVision && imageUrl) {
+          // Hybrid mode: image + guidance text
+          messages = [
+            {
+              role: "system",
+              content: `You are a social media copywriter. You have both an image AND guidance text. The guidance text tells you what the post is about - prioritize it! Use the image for visual details to enhance the message. ${emojiSystemRule}${brandVoiceSystemRule} Return ONLY valid JSON. ${nonceMessage}`,
+            },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: promptText },
+                { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
+              ],
+            },
+          ];
+        } else if (effectiveMode === "image" && useVision && imageUrl) {
+          // Image-only mode: analyze image
           messages = [
             {
               role: "system",
@@ -1174,7 +1519,27 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
       throw new HttpsError("internal", "Failed to parse AI response");
     }
 
-    // 10. Enforce emoji limits (server-side post-processing)
+    // 10. Enforce avoid-words rules (server-side post-processing)
+    // Use incoming usage data for batch tracking across multiple posts
+    const incomingUsage = request.data.avoidWordsUsage;
+    let avoidWordsTracker: AvoidWordsUsageTracker | null = null;
+
+    if (avoidWords.length > 0) {
+      console.info(`[AvoidWords] Enforcing avoid-words rules for dateId=${dateId}, incomingUsage=${JSON.stringify(incomingUsage || {})}`);
+
+      // Create tracker with incoming usage for batch-level frequency limits
+      avoidWordsTracker = createAvoidWordsTracker(1, incomingUsage);
+
+      // Enforce on IG caption first
+      aiOutput.ig.caption = enforceAvoidWords(aiOutput.ig.caption, avoidWords, avoidWordsTracker);
+
+      // Enforce on FB caption (shares tracker for batch-level limits)
+      aiOutput.fb.caption = enforceAvoidWords(aiOutput.fb.caption, avoidWords, avoidWordsTracker);
+
+      console.info(`[AvoidWords] Updated usage: ${JSON.stringify(trackerUsageToObject(avoidWordsTracker))}`);
+    }
+
+    // 11. Enforce emoji limits (server-side post-processing)
     console.info(`[EmojiEnforcement] emojiStyle=${emojiStyle}, dateId=${dateId}`);
 
     const igEnforcement = enforceEmojiLimit(aiOutput.ig.caption, emojiStyle as EmojiStyleType);
@@ -1217,11 +1582,17 @@ export const generatePostCopy = onCall<GeneratePostCopyRequest>(
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    const modeDesc = useVision ? "from image analysis" : "from text";
+    const modeDescriptions = {
+      image: "from image analysis",
+      hybrid: "from image + guidance text",
+      text: "from guidance text",
+    };
+    const modeDesc = modeDescriptions[effectiveMode] || "from text";
     return {
       success: true,
       status: "generated",
       message: `Generated content ${modeDesc} with ${Math.round(aiOutput.confidence * 100)}% confidence`,
+      avoidWordsUsage: avoidWordsTracker ? trackerUsageToObject(avoidWordsTracker) : undefined,
     };
   }
 );

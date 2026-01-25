@@ -146,16 +146,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
             await setPersistence(auth, browserSessionPersistence);
             await signInWithEmailAndPassword(auth, email, pass);
-        } catch (error: any) {
+        } catch (error: unknown) {
             let message = "Unable to sign in. Please try again.";
+            const firebaseError = error as { code?: string };
 
             if (
-                error.code === "auth/invalid-credential" ||
-                error.code === "auth/wrong-password" ||
-                error.code === "auth/user-not-found"
+                firebaseError.code === "auth/invalid-credential" ||
+                firebaseError.code === "auth/wrong-password" ||
+                firebaseError.code === "auth/user-not-found"
             ) {
                 message = "Incorrect email or password.";
-            } else if (error.code === "auth/too-many-requests") {
+            } else if (firebaseError.code === "auth/too-many-requests") {
                 message = "Too many failed attempts. Please try again later.";
             }
 

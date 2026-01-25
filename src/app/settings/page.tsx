@@ -5,20 +5,27 @@ import { useAuth } from "@/context/AuthContext";
 import { useWorkspaceUiSettings } from "@/hooks/useWorkspaceUiSettings";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCard from "@/components/ui/DashboardCard";
-import { Check, EyeOff, Sparkles, Hash, Smile } from "lucide-react";
+import { Check, EyeOff, Sparkles, Hash, Smile, Ban } from "lucide-react";
 import { HashtagStyle, EmojiStyle } from "@/lib/types";
 
 export default function SettingsPage() {
     const { workspaceId, workspaceLoading } = useAuth();
-    const { settings, aiSettings, loading, setHidePastUnsent, setBrandVoice, setHashtagStyle, setEmojiStyle } = useWorkspaceUiSettings();
+    const { settings, aiSettings, loading, setHidePastUnsent, setBrandVoice, setHashtagStyle, setEmojiStyle, setAvoidWords } = useWorkspaceUiSettings();
     const [showSaved, setShowSaved] = useState<string | null>(null);
     const [localBrandVoice, setLocalBrandVoice] = useState(aiSettings.brandVoice);
+    const [localAvoidWords, setLocalAvoidWords] = useState(aiSettings.avoidWords);
     const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+    const avoidWordsDebounceTimer = useRef<NodeJS.Timeout | null>(null);
 
-    // Sync local brand voice with settings when loaded
+    // Sync local brand voice with settings when loaded from external source
     useEffect(() => {
         setLocalBrandVoice(aiSettings.brandVoice);
     }, [aiSettings.brandVoice]);
+
+    // Sync local avoid words with settings when loaded from external source
+    useEffect(() => {
+        setLocalAvoidWords(aiSettings.avoidWords);
+    }, [aiSettings.avoidWords]);
 
     const handleToggle = async () => {
         await setHidePastUnsent(!settings.hidePastUnsent);
@@ -44,6 +51,17 @@ export default function SettingsPage() {
     const handleEmojiStyleChange = async (style: EmojiStyle) => {
         await setEmojiStyle(style);
         showSavedIndicator("emojiStyle");
+    };
+
+    const handleAvoidWordsChange = (value: string) => {
+        setLocalAvoidWords(value);
+
+        // Debounce the save
+        if (avoidWordsDebounceTimer.current) clearTimeout(avoidWordsDebounceTimer.current);
+        avoidWordsDebounceTimer.current = setTimeout(async () => {
+            await setAvoidWords(value);
+            showSavedIndicator("avoidWords");
+        }, 1000);
     };
 
     const showSavedIndicator = (key: string) => {
@@ -285,6 +303,43 @@ export default function SettingsPage() {
                                             </button>
                                         ))}
                                     </div>
+                                </div>
+                            </div>
+
+                            {/* Avoid Words */}
+                            <div className="flex items-start gap-3">
+                                <div className="mt-0.5 p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
+                                    <Ban size={18} className="text-red-600 dark:text-red-400" />
+                                </div>
+                                <div className="flex-1">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label
+                                            htmlFor="avoidWords"
+                                            className="text-sm font-medium text-[var(--text-primary)]"
+                                        >
+                                            Avoid Words / Phrases
+                                        </label>
+                                        {showSaved === "avoidWords" && (
+                                            <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                                                <Check size={14} />
+                                                Saved
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-sm text-[var(--text-secondary)] mb-3">
+                                        Comma-separated list of words the AI should avoid. Posts will never start with these words, and they&apos;ll be limited to one use per batch.
+                                    </p>
+                                    <input
+                                        id="avoidWords"
+                                        type="text"
+                                        value={localAvoidWords}
+                                        onChange={(e) => handleAvoidWordsChange(e.target.value)}
+                                        placeholder="indulge, delicious, amazing"
+                                        className="w-full text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg p-3 focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)]"
+                                    />
+                                    <p className="text-xs text-[var(--text-muted)] mt-2">
+                                        Changing this setting only affects new generations, not existing posts.
+                                    </p>
                                 </div>
                             </div>
                         </div>

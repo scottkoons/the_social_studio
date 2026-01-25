@@ -120,7 +120,7 @@ export default function SchedulePlannerModal({ open, onClose, onComplete }: Sche
             header: true,
             skipEmptyLines: true,
             complete: (results) => {
-                const data = results.data as any[];
+                const data = results.data as Record<string, string>[];
                 const rows: CsvRow[] = [];
                 const parseErrors: string[] = [];
 

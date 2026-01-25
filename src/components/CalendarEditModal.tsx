@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { X, Trash2, Copy, Upload, Loader2, Sparkles } from "lucide-react";
 import Image from "next/image";
-import { PostDay, getPostDocId } from "@/lib/types";
+import { PostDay, getPostDocId, GenerationMode } from "@/lib/types";
 import { db, storage, functions } from "@/lib/firebase";
-import { doc, updateDoc, deleteDoc, setDoc, getDoc, serverTimestamp, deleteField, writeBatch } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, setDoc, getDoc, serverTimestamp, deleteField } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useDropzone } from "react-dropzone";
@@ -39,12 +39,23 @@ export default function CalendarEditModal({
     onClose,
     onDateConflict,
 }: CalendarEditModalProps) {
+    // Helper to infer default generation mode based on image/guidance presence
+    const inferGenerationMode = (hasImage: boolean, hasGuidance: boolean): GenerationMode => {
+        if (hasImage && hasGuidance) return "hybrid";
+        if (hasImage) return "image";
+        return "text";
+    };
+
     // Local state for editing
     const [date, setDate] = useState(post.date);
     const [postingTime, setPostingTime] = useState(
         post.postingTime || randomTimeInWindow5Min(post.date, post.date)
     );
     const [timeWasManuallyEdited, setTimeWasManuallyEdited] = useState(false);
+    const [generationMode, setGenerationMode] = useState<GenerationMode>(
+        post.generationMode || inferGenerationMode(!!post.imageAssetId, !!post.starterText)
+    );
+    const [guidanceText, setGuidanceText] = useState(post.starterText || "");
     const [igCaption, setIgCaption] = useState(post.ai?.ig?.caption || "");
     const [igHashtags, setIgHashtags] = useState(post.ai?.ig?.hashtags?.join(", ") || "");
     const [fbCaption, setFbCaption] = useState(post.ai?.fb?.caption || "");
@@ -67,6 +78,8 @@ export default function CalendarEditModal({
         setDate(post.date);
         setPostingTime(post.postingTime || randomTimeInWindow5Min(post.date, post.date));
         setTimeWasManuallyEdited(false);
+        setGenerationMode(post.generationMode || inferGenerationMode(!!post.imageAssetId, !!post.starterText));
+        setGuidanceText(post.starterText || "");
         setIgCaption(post.ai?.ig?.caption || "");
         setIgHashtags(post.ai?.ig?.hashtags?.join(", ") || "");
         setFbCaption(post.ai?.fb?.caption || "");
@@ -203,6 +216,8 @@ export default function CalendarEditModal({
                 imageAssetId: removeImage ? deleteField() : newAssetId,
                 postingTime,
                 postingTimeSource,
+                generationMode,
+                starterText: guidanceText || deleteField(),
                 status: post.status === "sent" ? "sent" : "edited",
                 updatedAt: serverTimestamp(),
             };
@@ -225,6 +240,8 @@ export default function CalendarEditModal({
                     date,
                     postingTime,
                     postingTimeSource: "auto" as const, // Date change always resets to auto
+                    generationMode,
+                    starterText: guidanceText || undefined,
                     ai: {
                         ig: { caption: igCaption, hashtags: parsedIgHashtags },
                         fb: { caption: fbCaption, hashtags: parsedFbHashtags },
@@ -299,7 +316,8 @@ export default function CalendarEditModal({
             const duplicateData = stripUndefined({
                 date: duplicateDate,
                 platform: post.platform, // Preserve platform
-                starterText: post.starterText,
+                generationMode,
+                starterText: guidanceText || undefined,
                 imageAssetId: post.imageAssetId,
                 postingTime: duplicatePostingTime,
                 postingTimeSource: "auto" as const,
@@ -334,6 +352,8 @@ export default function CalendarEditModal({
                 workspaceId: string;
                 dateId: string;
                 regenerate: boolean;
+                generationMode?: GenerationMode;
+                guidanceText?: string;
                 previousOutputs?: {
                     igCaption?: string;
                     igHashtags?: string[];
@@ -352,6 +372,8 @@ export default function CalendarEditModal({
                 workspaceId,
                 dateId: docId,
                 regenerate: true,
+                generationMode,
+                guidanceText: guidanceText || undefined,
                 previousOutputs: {
                     igCaption: igCaption || undefined,
                     igHashtags: igHashtags ? normalizeHashtagsArray(igHashtags.split(",")) : undefined,
@@ -468,6 +490,64 @@ export default function CalendarEditModal({
                         )}
                     </div>
 
+                    {/* Generation Mode */}
+                    <div>
+                        <label className="block text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
+                            AI Generation Mode
+                        </label>
+                        <div className="flex rounded-lg border border-[var(--border-primary)] overflow-hidden">
+                            {[
+                                { value: "image" as GenerationMode, label: "Image Only", desc: "Analyze image" },
+                                { value: "hybrid" as GenerationMode, label: "Image + Text", desc: "Image + guidance" },
+                                { value: "text" as GenerationMode, label: "Text Only", desc: "Guidance only" },
+                            ].map((option) => (
+                                <button
+                                    key={option.value}
+                                    onClick={() => setGenerationMode(option.value)}
+                                    className={`
+                                        flex-1 px-3 py-2 text-sm font-medium transition-colors
+                                        ${generationMode === option.value
+                                            ? 'bg-[var(--accent-primary)] text-white'
+                                            : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+                                        }
+                                    `}
+                                >
+                                    {option.label}
+                                </button>
+                            ))}
+                        </div>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                            {generationMode === "image" && "AI analyzes only the image to generate captions."}
+                            {generationMode === "hybrid" && "AI uses both the image and your guidance text."}
+                            {generationMode === "text" && "AI generates captions from your guidance text only (no image analysis)."}
+                        </p>
+                    </div>
+
+                    {/* Guidance Text (shown for hybrid and text modes) */}
+                    {(generationMode === "hybrid" || generationMode === "text") && (
+                        <div>
+                            <label className="block text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
+                                {generationMode === "hybrid" ? "Guidance Text" : "Post Description"}
+                            </label>
+                            <textarea
+                                value={guidanceText}
+                                onChange={(e) => setGuidanceText(e.target.value)}
+                                rows={3}
+                                className="w-full px-3 py-2 border border-[var(--input-border)] bg-[var(--input-bg)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-1 focus:ring-[var(--input-focus-ring)] focus:border-[var(--input-focus-ring)] resize-none"
+                                placeholder={
+                                    generationMode === "hybrid"
+                                        ? "Add context or instructions to guide the AI (e.g., 'Focus on the seasonal flavors' or 'Mention our weekend special')"
+                                        : "Describe what this post should be about (e.g., 'Promote our new summer menu with refreshing drinks and light bites')"
+                                }
+                            />
+                            {generationMode === "text" && !guidanceText && (
+                                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                                    Text-only mode requires guidance text to generate content.
+                                </p>
+                            )}
+                        </div>
+                    )}
+
                     {/* Date and Time */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
                         <div>
@@ -502,11 +582,15 @@ export default function CalendarEditModal({
                     <div className="flex items-center justify-between py-3 px-4 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-lg border border-purple-100 dark:border-purple-800">
                         <div>
                             <h3 className="text-sm font-medium text-purple-900 dark:text-purple-200">AI Content</h3>
-                            <p className="text-xs text-purple-600 dark:text-purple-400">Generate fresh captions and hashtags</p>
+                            <p className="text-xs text-purple-600 dark:text-purple-400">
+                                {generationMode === "image" && "Generate from image analysis"}
+                                {generationMode === "hybrid" && "Generate from image + guidance"}
+                                {generationMode === "text" && "Generate from guidance text"}
+                            </p>
                         </div>
                         <button
                             onClick={handleRegenerate}
-                            disabled={isRegenerating}
+                            disabled={isRegenerating || (generationMode === "text" && !guidanceText.trim())}
                             className="px-3 py-2 text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                         >
                             {isRegenerating ? (

@@ -6,7 +6,7 @@ import { useDropzone } from "react-dropzone";
 import { db, functions } from "@/lib/firebase";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
-import { FileDown, AlertCircle, Check, X, Image, ChevronDown, ChevronUp, AlertTriangle, Upload } from "lucide-react";
+import { FileDown, AlertCircle, Check, X, Image as ImageIcon, ChevronDown, ChevronUp, AlertTriangle, Upload } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { parseCsvDate, formatDisplayDate } from "@/lib/utils";
 import { generatePlatformPostingTimes } from "@/lib/postingTime";
@@ -69,9 +69,16 @@ interface ParsedRow {
     imageValidation?: ImageValidationResult;
 }
 
+interface ExistingPostData {
+    starterText?: string;
+    imageAssetId?: string;
+    date?: string;
+    createdAt?: unknown;
+}
+
 interface DuplicateInfo {
     row: ParsedRow;
-    existingData: any;
+    existingData: ExistingPostData;
 }
 
 type DuplicateAction = "skip" | "overwrite" | "overwrite-empty";
@@ -141,6 +148,11 @@ export default function CSVImport() {
     const imageErrorsRef = useRef<ImageImportError[]>([]);
     const [imageErrors, setImageErrors] = useState<ImageImportError[]>([]);
 
+    // Refs to hold functions to avoid "accessed before declared" lint error
+    const importNewRowsRef = useRef<((rows: ParsedRow[]) => Promise<void>) | null>(null);
+    const processImageImportsRef = useRef<(() => Promise<void>) | null>(null);
+    const finishImportRef = useRef<((inputElement: HTMLInputElement | null) => void) | null>(null);
+
     const resetState = () => {
         setShowModal(false);
         setDuplicates([]);
@@ -206,7 +218,7 @@ export default function CSVImport() {
                     return;
                 }
 
-                const data = results.data as any[];
+                const data = results.data as Record<string, string>[];
                 const newRows: ParsedRow[] = [];
                 const duplicateRows: DuplicateInfo[] = [];
                 const processedDates = new Set<string>();
@@ -265,9 +277,15 @@ export default function CSVImport() {
                         const docSnap = await getDoc(docRef);
 
                         if (docSnap.exists()) {
+                            const data = docSnap.data();
                             duplicateRows.push({
                                 row: parsedRow,
-                                existingData: docSnap.data()
+                                existingData: {
+                                    starterText: data.starterText as string | undefined,
+                                    imageAssetId: data.imageAssetId as string | undefined,
+                                    date: data.date as string | undefined,
+                                    createdAt: data.createdAt,
+                                }
                             });
                         } else {
                             newRows.push(parsedRow);
@@ -290,9 +308,9 @@ export default function CSVImport() {
                     setShowModal(true);
                     setIsImporting(false);
                 } else {
-                    await importNewRows(newRows);
-                    await processImageImports();
-                    finishImport(null);
+                    await importNewRowsRef.current?.(newRows);
+                    await processImageImportsRef.current?.();
+                    finishImportRef.current?.(null);
                 }
             },
             error: (err) => {
@@ -318,37 +336,6 @@ export default function CSVImport() {
         multiple: false,
         disabled: !canImport || isImporting || showModal || importingImages,
     });
-
-    const importNewRows = async (rows: ParsedRow[]) => {
-        if (!workspaceId) return;
-
-        for (const row of rows) {
-            try {
-                // One document per date (docId = date)
-                const docRef = doc(db, "workspaces", workspaceId, "post_days", row.date);
-                const postingTimes = generatePlatformPostingTimes(row.date, row.date);
-                await setDoc(docRef, {
-                    date: row.date,
-                    starterText: row.starterText,
-                    postingTimeIg: postingTimes.ig,
-                    postingTimeFb: postingTimes.fb,
-                    postingTimeIgSource: "auto",
-                    postingTimeFbSource: "auto",
-                    status: "input",
-                    createdAt: serverTimestamp(),
-                    updatedAt: serverTimestamp(),
-                });
-                countersRef.current.created++;
-
-                if (row.imageUrl) {
-                    rowsWithImagesRef.current.push(row);
-                }
-            } catch (err) {
-                console.error("Error importing row:", row, err);
-                countersRef.current.skipped++;
-            }
-        }
-    };
 
     const isSkipError = (errorMessage: string): boolean => {
         const skipPatterns = [
@@ -378,7 +365,41 @@ export default function CSVImport() {
         return errorMessage.length > 50 ? errorMessage.substring(0, 47) + '...' : errorMessage;
     };
 
-    const processImageImports = async () => {
+    // Assign helper functions to refs to avoid "accessed before declared" issues
+    // These refs are read in callbacks, not during render, so this is safe
+    // eslint-disable-next-line react-hooks/refs
+    importNewRowsRef.current = async (rows: ParsedRow[]) => {
+        if (!workspaceId) return;
+
+        for (const row of rows) {
+            try {
+                const docRef = doc(db, "workspaces", workspaceId, "post_days", row.date);
+                const postingTimes = generatePlatformPostingTimes(row.date, row.date);
+                await setDoc(docRef, {
+                    date: row.date,
+                    starterText: row.starterText,
+                    postingTimeIg: postingTimes.ig,
+                    postingTimeFb: postingTimes.fb,
+                    postingTimeIgSource: "auto",
+                    postingTimeFbSource: "auto",
+                    status: "input",
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                });
+                countersRef.current.created++;
+
+                if (row.imageUrl) {
+                    rowsWithImagesRef.current.push(row);
+                }
+            } catch (err) {
+                console.error("Error importing row:", row, err);
+                countersRef.current.skipped++;
+            }
+        }
+    };
+
+    // eslint-disable-next-line react-hooks/refs
+    processImageImportsRef.current = async () => {
         if (!workspaceId || rowsWithImagesRef.current.length === 0) return;
 
         setImportingImages(true);
@@ -424,8 +445,8 @@ export default function CSVImport() {
                     });
                     console.error(`Image import failed for ${row.date}:`, reason);
                 }
-            } catch (err: any) {
-                const errorMsg = err?.message || String(err);
+            } catch (err: unknown) {
+                const errorMsg = err instanceof Error ? err.message : String(err);
                 const reason = extractErrorReason(errorMsg);
                 const isSkip = isSkipError(errorMsg);
                 if (isSkip) {
@@ -456,9 +477,9 @@ export default function CSVImport() {
                 await processDuplicate(duplicateRows[i], action);
             }
 
-            await importNewRows(newRows);
-            await processImageImports();
-            finishImport(pendingImportRef.current.inputElement);
+            await importNewRowsRef.current?.(newRows);
+            await processImageImportsRef.current?.();
+            finishImportRef.current?.(pendingImportRef.current.inputElement);
         } else {
             await processDuplicate(duplicateRows[currentDuplicateIndex], action);
 
@@ -467,9 +488,9 @@ export default function CSVImport() {
             } else {
                 setIsImporting(true);
                 setShowModal(false);
-                await importNewRows(newRows);
-                await processImageImports();
-                finishImport(pendingImportRef.current.inputElement);
+                await importNewRowsRef.current?.(newRows);
+                await processImageImportsRef.current?.();
+                finishImportRef.current?.(pendingImportRef.current.inputElement);
             }
         }
     };
@@ -504,7 +525,7 @@ export default function CSVImport() {
                     rowsWithImagesRef.current.push(duplicate.row);
                 }
             } else if (action === "overwrite-empty") {
-                const updates: any = { updatedAt: serverTimestamp() };
+                const updates: Record<string, unknown> = { updatedAt: serverTimestamp() };
 
                 if (!duplicate.existingData.starterText && duplicate.row.starterText) {
                     updates.starterText = duplicate.row.starterText;
@@ -534,7 +555,8 @@ export default function CSVImport() {
         setIsImporting(false);
     };
 
-    const finishImport = (inputElement: HTMLInputElement | null) => {
+    // eslint-disable-next-line react-hooks/refs
+    finishImportRef.current = (inputElement: HTMLInputElement | null) => {
         const { created, overwritten, skipped, invalidDates, imagesImported, imagesSkipped, imagesFailed } = countersRef.current;
 
         const parts: string[] = [];
@@ -744,7 +766,7 @@ export default function CSVImport() {
                                     </p>
                                     {currentDuplicate.existingData.imageAssetId && (
                                         <p className="text-[var(--accent-primary)] text-[10px] mt-1 flex items-center gap-1">
-                                            <Image size={10} /> Has image
+                                            <ImageIcon size={10} aria-hidden="true" /> Has image
                                         </p>
                                     )}
                                 </div>
@@ -755,7 +777,7 @@ export default function CSVImport() {
                                     </p>
                                     {currentDuplicate.row.imageUrl && (
                                         <p className="text-[var(--accent-primary)] text-[10px] mt-1 flex items-center gap-1">
-                                            <Image size={10} /> Has imageUrl
+                                            <ImageIcon size={10} aria-hidden="true" /> Has imageUrl
                                         </p>
                                     )}
                                 </div>

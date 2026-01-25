@@ -130,6 +130,7 @@ const CalendarPdfMonth = forwardRef<HTMLDivElement, CalendarPdfMonthProps>(
                                             >
                                                 {includeImages && imageDataUrl ? (
                                                     // Use base64 data URL to avoid CORS
+                                                    // eslint-disable-next-line @next/next/no-img-element
                                                     <img
                                                         src={imageDataUrl}
                                                         alt=""

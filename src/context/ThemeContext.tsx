@@ -25,7 +25,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("light");
     const [mounted, setMounted] = useState(false);
 
-    // Load saved theme on mount
+    // Load saved theme from localStorage on mount
     useEffect(() => {
         const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
         if (stored && ["light", "dark", "system"].includes(stored)) {
@@ -34,7 +34,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         setMounted(true);
     }, []);
 
-    // Resolve theme and apply dark class
+    // Resolve theme and apply dark class to DOM
     useEffect(() => {
         if (!mounted) return;
 
