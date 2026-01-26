@@ -37,8 +37,8 @@ export default function PostsListView({
 
   return (
     <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-4 px-4 py-3 border-b border-[var(--border-primary)] bg-[var(--bg-primary)]">
+      {/* Header - hidden on mobile, shown on md+ */}
+      <div className="hidden md:flex items-center gap-4 px-4 py-3 border-b border-[var(--border-primary)] bg-[var(--bg-primary)]">
         {/* Select all checkbox */}
         <div className="w-8">
           <input
@@ -67,6 +67,22 @@ export default function PostsListView({
           Status
         </div>
         <div className="w-10" /> {/* Edit button placeholder */}
+      </div>
+
+      {/* Mobile header - select all only */}
+      <div className="flex md:hidden items-center gap-3 px-3 py-2.5 border-b border-[var(--border-primary)] bg-[var(--bg-primary)]">
+        <input
+          type="checkbox"
+          checked={allSelected}
+          ref={(el) => {
+            if (el) el.indeterminate = someSelected && !allSelected;
+          }}
+          onChange={(e) => onSelectAll(e.target.checked)}
+          className="h-4 w-4 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] cursor-pointer bg-[var(--input-bg)]"
+        />
+        <span className="text-xs text-[var(--text-tertiary)]">
+          {selectedIds.size > 0 ? `${selectedIds.size} selected` : "Select all"}
+        </span>
       </div>
 
       {/* Post rows */}

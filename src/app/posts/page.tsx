@@ -2,10 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { db, storage, functions } from "@/lib/firebase";
+import { db, storage } from "@/lib/firebase";
 import { collection, query, onSnapshot, orderBy, doc, setDoc, getDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { ref, getDownloadURL } from "firebase/storage";
-import { httpsCallable } from "firebase/functions";
 import Surface from "@/components/ui/Surface";
 import ViewToggle, { ViewMode } from "@/components/ui/ViewToggle";
 import BatchActionBar from "@/components/ui/BatchActionBar";
@@ -15,11 +14,12 @@ import BufferExportModal from "@/components/BufferExportModal";
 import PostsCalendarView from "@/components/posts/PostsCalendarView";
 import PostsListView from "@/components/posts/PostsListView";
 import PostDetailPanel from "@/components/posts/PostDetailPanel";
-import { PostDay, getPostDocId, GenerationMode, EmojiStyle } from "@/lib/types";
+import { PostDay, getPostDocId } from "@/lib/types";
 import { generatePlatformPostingTimes } from "@/lib/postingTime";
 import { useHidePastUnsent } from "@/hooks/useHidePastUnsent";
 import { useWorkspaceUiSettings } from "@/hooks/useWorkspaceUiSettings";
-import { isPostPastDue, isPastInDenver } from "@/lib/utils";
+import { useGenerateAllPosts } from "@/hooks/useGenerateAllPosts";
+import { isPastInDenver } from "@/lib/utils";
 import { Plus, Play, Download, Trash2, Sparkles, Loader2, FileText, Calendar, Upload, ChevronDown } from "lucide-react";
 import CSVImport from "@/components/CSVImport";
 import PostsPdfPrintRoot from "@/components/PostsPdfPrintRoot";
@@ -27,14 +27,6 @@ import CalendarPdfPrintRoot from "@/components/CalendarPdfPrintRoot";
 import { PostsPdfExportProgress } from "@/lib/postsPdfExport";
 import { PdfExportProgress } from "@/lib/calendarPdfExport";
 import { format, addDays } from "date-fns";
-
-const CONCURRENCY_LIMIT = 3;
-
-interface GeneratePostCopyResponse {
-  success: boolean;
-  status: "generated" | "already_generated" | "error";
-  message?: string;
-}
 
 export default function PostsPage() {
   const { user, workspaceId, workspaceLoading } = useAuth();
@@ -57,7 +49,6 @@ export default function PostsPage() {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   // Action state
-  const [isGenerating, setIsGenerating] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -76,6 +67,11 @@ export default function PostsPage() {
   // Use shared hooks
   const { filteredPosts, hidePastUnsent } = useHidePastUnsent(posts);
   const { aiSettings } = useWorkspaceUiSettings();
+  const { generateAll, isGenerating } = useGenerateAllPosts({
+    workspaceId,
+    emojiStyle: aiSettings.emojiStyle,
+    avoidWords: aiSettings.avoidWords,
+  });
 
   // Load posts
   useEffect(() => {
@@ -293,7 +289,7 @@ export default function PostsPage() {
     }
   }, [workspaceId, isAdding, posts, showToast]);
 
-  // Batch generate
+  // Batch generate - uses shared hook
   const handleGenerateBatch = useCallback(async () => {
     if (!workspaceId || isGenerating) return;
 
@@ -304,97 +300,16 @@ export default function PostsPage() {
 
     if (targets.length === 0) return;
 
-    setIsGenerating(true);
+    const result = await generateAll(targets);
 
-    const generatePostCopy = httpsCallable<
-      {
-        workspaceId: string;
-        dateId: string;
-        regenerate: boolean;
-        generationMode?: GenerationMode;
-        guidanceText?: string;
-        requestId?: string;
-        emojiStyle?: EmojiStyle;
-        avoidWords?: string;
-      },
-      GeneratePostCopyResponse
-    >(functions, "generatePostCopy");
-
-    const currentEmojiStyle = aiSettings.emojiStyle;
-    const currentAvoidWords = aiSettings.avoidWords;
-
-    let generated = 0;
-    let skipped = 0;
-    let failed = 0;
-
-    const toProcess: PostDay[] = [];
-
-    for (const post of targets) {
-      const isPast = isPostPastDue(post);
-      if (isPast && post.status !== "sent") {
-        skipped++;
-        continue;
-      }
-
-      const effectiveMode = post.generationMode || (post.imageAssetId ? (post.starterText ? "hybrid" : "image") : "text");
-      if (effectiveMode === "text" && (!post.starterText || post.starterText.trim() === "")) {
-        skipped++;
-        continue;
-      }
-
-      toProcess.push(post);
-    }
-
-    // Process concurrently
-    const queue = [...toProcess];
-    const inFlight: Promise<void>[] = [];
-
-    const processOne = async (post: PostDay) => {
-      const docId = getPostDocId(post);
-
-      try {
-        await generatePostCopy({
-          workspaceId,
-          dateId: docId,
-          regenerate: true,
-          generationMode: post.generationMode,
-          guidanceText: post.starterText,
-          requestId: crypto.randomUUID(),
-          emojiStyle: currentEmojiStyle,
-          avoidWords: currentAvoidWords,
-        });
-        generated++;
-      } catch (err) {
-        console.error(`Generate error for ${docId}:`, err);
-        failed++;
-      }
-    };
-
-    while (queue.length > 0 || inFlight.length > 0) {
-      while (queue.length > 0 && inFlight.length < CONCURRENCY_LIMIT) {
-        const post = queue.shift()!;
-        const promise = processOne(post).then(() => {
-          const idx = inFlight.indexOf(promise);
-          if (idx > -1) inFlight.splice(idx, 1);
-        });
-        inFlight.push(promise);
-      }
-
-      if (inFlight.length > 0) {
-        await Promise.race(inFlight);
-      }
-    }
-
-    setIsGenerating(false);
-
-    if (generated === 0 && skipped > 0) {
-      showToast("warn", `Skipped ${skipped} posts (past or missing data)`);
-    } else if (failed > 0) {
-      showToast("warn", `Generated ${generated}, failed ${failed}`);
+    if (result.generated === 0 && result.skipped > 0) {
+      showToast("warn", `Skipped ${result.skipped} posts (past or missing data)`);
+    } else if (result.failed > 0) {
+      showToast("warn", `Generated ${result.generated}, failed ${result.failed}`);
     } else {
-      showToast("success", `Generated ${generated} post${generated !== 1 ? "s" : ""}`);
+      showToast("success", `Generated ${result.generated} post${result.generated !== 1 ? "s" : ""}`);
     }
-  }, [workspaceId, isGenerating, selectedIds, filteredPosts, aiSettings, showToast]);
+  }, [workspaceId, isGenerating, selectedIds, filteredPosts, generateAll, showToast]);
 
   // Batch delete
   const handleBatchDelete = useCallback(async () => {
@@ -568,33 +483,36 @@ export default function PostsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* Action buttons - responsive grid */}
+        <div className="flex flex-wrap items-center gap-2">
           <ViewToggle value={viewMode} onChange={setViewMode} />
 
           <button
             onClick={handleAddPost}
             disabled={isAdding}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] rounded-lg transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-2.5 py-2 text-sm font-medium text-white bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] rounded-lg transition-colors disabled:opacity-50"
           >
             {isAdding ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <Plus className="w-4 h-4" />
             )}
-            Add Post
+            <span className="hidden sm:inline">Add Post</span>
+            <span className="sm:hidden">Add</span>
           </button>
 
           <button
             onClick={handleGenerateBatch}
             disabled={isGenerating || filteredPosts.length === 0}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-2.5 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors disabled:opacity-50"
           >
             {isGenerating ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <Play className="w-4 h-4 fill-current" />
             )}
-            Generate {selectedIds.size > 0 ? "Selected" : "All"}
+            <span className="hidden sm:inline">Generate {selectedIds.size > 0 ? "Selected" : "All"}</span>
+            <span className="sm:hidden">Generate</span>
           </button>
 
           {/* Download Dropdown */}
@@ -602,10 +520,10 @@ export default function PostsPage() {
             <button
               onClick={() => setShowExportDropdown(!showExportDropdown)}
               disabled={filteredPosts.length === 0}
-              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-2.5 py-2 text-sm font-medium text-[var(--text-primary)] bg-[var(--bg-secondary)] border border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors disabled:opacity-50"
             >
               <Download className="w-4 h-4" />
-              Download
+              <span className="hidden sm:inline">Download</span>
               <ChevronDown className="w-3 h-3" />
             </button>
 
@@ -615,10 +533,10 @@ export default function PostsPage() {
                   className="fixed inset-0 z-40"
                   onClick={() => setShowExportDropdown(false)}
                 />
-                <div className="absolute right-0 mt-2 w-56 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg shadow-lg z-50 py-1">
+                <div className="absolute right-0 sm:right-0 mt-2 w-56 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg shadow-lg z-50 py-1">
                   <button
                     onClick={exportEditableCsv}
-                    className="w-full px-4 py-2 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
+                    className="w-full px-4 py-2.5 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
                   >
                     <FileText className="w-4 h-4 text-[var(--text-tertiary)]" />
                     Spreadsheet (.csv)
@@ -626,14 +544,14 @@ export default function PostsPage() {
                   <div className="border-t border-[var(--border-secondary)] my-1" />
                   <button
                     onClick={() => startPostsPdfExport(true)}
-                    className="w-full px-4 py-2 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
+                    className="w-full px-4 py-2.5 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
                   >
                     <FileText className="w-4 h-4 text-[var(--text-tertiary)]" />
                     Posts PDF (with images)
                   </button>
                   <button
                     onClick={() => startPostsPdfExport(false)}
-                    className="w-full px-4 py-2 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
+                    className="w-full px-4 py-2.5 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
                   >
                     <FileText className="w-4 h-4 text-[var(--text-tertiary)]" />
                     Posts PDF (text only)
@@ -641,7 +559,7 @@ export default function PostsPage() {
                   <div className="border-t border-[var(--border-secondary)] my-1" />
                   <button
                     onClick={startCalendarPdfExport}
-                    className="w-full px-4 py-2 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
+                    className="w-full px-4 py-2.5 text-sm text-left text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] flex items-center gap-3"
                   >
                     <Calendar className="w-4 h-4 text-[var(--text-tertiary)]" />
                     Calendar PDF
@@ -655,10 +573,11 @@ export default function PostsPage() {
           <button
             onClick={() => setShowExportModal(true)}
             disabled={filteredPosts.length === 0}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-emerald-500 hover:bg-emerald-600 rounded-lg transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-2.5 py-2 text-sm font-medium text-white bg-emerald-500 hover:bg-emerald-600 rounded-lg transition-colors disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
-            Export for Buffer
+            <span className="hidden sm:inline">Export for Buffer</span>
+            <span className="sm:hidden">Buffer</span>
           </button>
         </div>
       </div>

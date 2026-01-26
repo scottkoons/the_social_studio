@@ -323,7 +323,7 @@ export default function SettingsPage() {
                   <p className="text-xs text-[var(--text-tertiary)] mb-3">
                     Control how many hashtags AI includes in your posts.
                   </p>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     {[
                       { value: "light", label: "Light", desc: "5-8 IG, 3-5 FB" },
                       { value: "medium", label: "Medium", desc: "10-15 IG, 5-8 FB" },
@@ -377,7 +377,7 @@ export default function SettingsPage() {
                   <p className="text-xs text-[var(--text-tertiary)] mb-3">
                     Control how many emojis AI includes in captions.
                   </p>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     {[
                       { value: "low", label: "Low", desc: "0-1 emojis" },
                       { value: "medium", label: "Medium", desc: "2-4 emojis" },

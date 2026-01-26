@@ -163,9 +163,10 @@ export default function PostCard({
   if (variant === "list") {
     return (
       <>
+      {/* Desktop list row */}
       <div
         className={`
-          group flex items-center gap-4 px-4 py-3 border-b border-[var(--border-secondary)]
+          hidden md:flex group items-center gap-4 px-4 py-3 border-b border-[var(--border-secondary)]
           hover:bg-[var(--table-row-hover)] cursor-pointer transition-colors
           ${isSelected ? "bg-[var(--table-row-selected)]" : ""}
           ${draggable ? "cursor-grab active:cursor-grabbing" : ""}
@@ -283,6 +284,86 @@ export default function PostCard({
         >
           <Edit2 className="w-4 h-4" />
         </button>
+      </div>
+
+      {/* Mobile card layout */}
+      <div
+        className={`
+          md:hidden flex items-start gap-3 px-3 py-3 border-b border-[var(--border-secondary)]
+          active:bg-[var(--table-row-hover)] cursor-pointer transition-colors
+          ${isSelected ? "bg-[var(--table-row-selected)]" : ""}
+        `}
+        onClick={onClick}
+      >
+        {/* Checkbox */}
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={(e) => {
+            e.stopPropagation();
+            onSelect(docId, e.target.checked);
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="h-4 w-4 mt-1 rounded border-[var(--border-primary)] text-[var(--accent-primary)] focus:ring-[var(--accent-primary)] cursor-pointer bg-[var(--input-bg)]"
+        />
+
+        {/* Thumbnail */}
+        <div className="relative w-14 h-14 rounded-md overflow-hidden bg-[var(--bg-tertiary)] flex-shrink-0">
+          {imageUrl ? (
+            <Image
+              src={imageUrl}
+              alt=""
+              fill
+              className="object-cover"
+              sizes="56px"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
+              <span className="text-[10px]">No img</span>
+            </div>
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          {/* Date & Status row */}
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="text-sm font-medium text-[var(--text-primary)]">
+              {new Date(post.date + "T12:00:00").toLocaleDateString("en-US", {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+              })}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <StatusDot status={getStatusDotStatus(post.status)} size="sm" />
+              <span className="text-xs text-[var(--text-tertiary)] capitalize">{post.status}</span>
+            </div>
+          </div>
+
+          {/* Preview text */}
+          <p className="text-sm text-[var(--text-secondary)] line-clamp-2">
+            {previewText || <span className="text-[var(--text-muted)] italic">No content yet</span>}
+          </p>
+
+          {/* Bottom row: time, mode, platforms */}
+          <div className="flex items-center gap-2 mt-1.5 text-xs text-[var(--text-tertiary)]">
+            <span>{formatTimeForDisplay(post.postingTimeIg || post.postingTime || "12:00")}</span>
+            <span>•</span>
+            <div className="flex items-center gap-1">
+              {(!post.platform || post.platform === "instagram") && <Instagram className="w-3 h-3" />}
+              {(!post.platform || post.platform === "facebook") && <Facebook className="w-3 h-3" />}
+            </div>
+            {post.generationMode && (
+              <>
+                <span>•</span>
+                {post.generationMode === "image" && <ImageIcon className="w-3 h-3 text-blue-500" />}
+                {post.generationMode === "hybrid" && <Layers className="w-3 h-3 text-purple-500" />}
+                {post.generationMode === "text" && <FileText className="w-3 h-3 text-emerald-500" />}
+              </>
+            )}
+          </div>
+        </div>
       </div>
       {lightboxModal}
       </>

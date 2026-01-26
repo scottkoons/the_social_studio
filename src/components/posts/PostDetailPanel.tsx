@@ -567,29 +567,29 @@ export default function PostDetailPanel({
             {/* Status Stepper */}
             <div className="p-6 border-b border-[var(--border-secondary)]">
               <label className="micro-label block mb-3">Status</label>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1">
                 {statusSteps.map((step, index) => {
                   const isActive = index <= currentStatusIndex;
                   const isCurrent = step.key === post.status;
                   return (
-                    <div key={step.key} className="flex items-center gap-2">
+                    <div key={step.key} className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                       <div
                         className={`
-                          w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium
+                          w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-medium
                           ${isCurrent ? "bg-[var(--accent-primary)] text-white" : ""}
                           ${isActive && !isCurrent ? "bg-[var(--status-success)] text-white" : ""}
                           ${!isActive ? "bg-[var(--bg-tertiary)] text-[var(--text-muted)]" : ""}
                         `}
                       >
-                        {isActive && !isCurrent ? <Check className="w-3 h-3" /> : index + 1}
+                        {isActive && !isCurrent ? <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> : index + 1}
                       </div>
                       <span
-                        className={`text-xs ${isCurrent ? "text-[var(--text-primary)] font-medium" : "text-[var(--text-tertiary)]"}`}
+                        className={`text-[10px] sm:text-xs ${isCurrent ? "text-[var(--text-primary)] font-medium" : "text-[var(--text-tertiary)]"}`}
                       >
                         {step.label}
                       </span>
                       {index < statusSteps.length - 1 && (
-                        <div className={`w-8 h-0.5 ${isActive ? "bg-[var(--status-success)]" : "bg-[var(--bg-tertiary)]"}`} />
+                        <div className={`w-4 sm:w-8 h-0.5 ${isActive ? "bg-[var(--status-success)]" : "bg-[var(--bg-tertiary)]"}`} />
                       )}
                     </div>
                   );
