@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db, storage } from "@/lib/firebase";
 import { collection, query, onSnapshot, orderBy, doc, setDoc, getDoc, serverTimestamp, writeBatch } from "firebase/firestore";
-import { ref, getDownloadURL } from "firebase/storage";
+import { ref, getDownloadURL, uploadBytes } from "firebase/storage";
 import Surface from "@/components/ui/Surface";
 import ViewToggle, { ViewMode } from "@/components/ui/ViewToggle";
 import BatchActionBar from "@/components/ui/BatchActionBar";
@@ -241,6 +241,69 @@ export default function PostsPage() {
       } catch (err) {
         console.error("Error creating post:", err);
         showToast("error", "Failed to create post");
+      } finally {
+        setIsAdding(false);
+      }
+    },
+    [workspaceId, isAdding, showToast, handlePastDateBlocked]
+  );
+
+  // Image drop on calendar - create new post with image
+  const handleImageDrop = useCallback(
+    async (dateStr: string, file: File) => {
+      if (!workspaceId || isAdding) return;
+
+      // Block past dates
+      if (isPastInDenver(dateStr)) {
+        handlePastDateBlocked();
+        return;
+      }
+
+      setIsAdding(true);
+
+      try {
+        // Upload image to Storage
+        const storagePath = `assets/${workspaceId}/${dateStr}/${file.name}`;
+        const storageRef = ref(storage, storagePath);
+        await uploadBytes(storageRef, file);
+        const downloadUrl = await getDownloadURL(storageRef);
+
+        // Create asset document
+        const assetId = crypto.randomUUID();
+        await setDoc(doc(db, "workspaces", workspaceId, "assets", assetId), {
+          id: assetId,
+          storagePath,
+          fileName: file.name,
+          contentType: file.type,
+          size: file.size,
+          downloadUrl,
+          createdAt: serverTimestamp(),
+          workspaceId,
+        });
+
+        // Create post with image
+        const docRef = doc(db, "workspaces", workspaceId, "post_days", dateStr);
+        const postingTimes = generatePlatformPostingTimes(dateStr, dateStr);
+
+        await setDoc(docRef, {
+          date: dateStr,
+          starterText: "",
+          imageAssetId: assetId,
+          imageUrl: downloadUrl,
+          generationMode: "image",
+          postingTimeIg: postingTimes.ig,
+          postingTimeFb: postingTimes.fb,
+          postingTimeIgSource: "auto",
+          postingTimeFbSource: "auto",
+          status: "input",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+
+        showToast("success", `Created post with image for ${dateStr}`);
+      } catch (err) {
+        console.error("Error creating post with image:", err);
+        showToast("error", "Failed to create post with image");
       } finally {
         setIsAdding(false);
       }
@@ -601,6 +664,7 @@ export default function PostsPage() {
           onPostClick={handlePostClick}
           onEmptyDayClick={handleEmptyDayClick}
           onPastDateBlocked={handlePastDateBlocked}
+          onImageDrop={handleImageDrop}
         />
       ) : (
         <PostsListView

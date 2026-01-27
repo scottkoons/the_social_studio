@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Plus, Lock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Lock, Upload } from "lucide-react";
 import { format, startOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, isSameMonth } from "date-fns";
 import PostCard from "./PostCard";
 import { PostDay, getPostDocId } from "@/lib/types";
@@ -22,6 +22,7 @@ interface PostsCalendarViewProps {
   onPostClick: (post: PostDay) => void;
   onEmptyDayClick: (date: string) => void;
   onPastDateBlocked?: () => void; // Called when user tries to interact with past date
+  onImageDrop?: (date: string, file: File) => void; // Called when image file is dropped on a date
 }
 
 export default function PostsCalendarView({
@@ -34,7 +35,10 @@ export default function PostsCalendarView({
   onPostClick,
   onEmptyDayClick,
   onPastDateBlocked,
+  onImageDrop,
 }: PostsCalendarViewProps) {
+  // File drop state
+  const [fileDropTarget, setFileDropTarget] = useState<string | null>(null);
   // Drag-and-drop state
   const [draggingPost, setDraggingPost] = useState<PostDay | null>(null);
   const [dropTargetDate, setDropTargetDate] = useState<string | null>(null);
@@ -232,12 +236,19 @@ export default function PostsCalendarView({
               onPastDateBlocked={onPastDateBlocked}
               isDragging={!!draggingPost}
               isDropTarget={dropTargetDate === dateStr}
+              isFileDropTarget={fileDropTarget === dateStr}
               canDrop={!!draggingPost && dateStr !== draggingPost.date && dateStr >= getTodayInDenver()}
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
               onDragOver={() => handleDragOver(dateStr)}
               onDragLeave={handleDragLeave}
               onDrop={() => handleDrop(dateStr)}
+              onFileDragOver={() => setFileDropTarget(dateStr)}
+              onFileDragLeave={() => setFileDropTarget(null)}
+              onFileDrop={(file) => {
+                setFileDropTarget(null);
+                onImageDrop?.(dateStr, file);
+              }}
             />
           );
         })}
@@ -270,7 +281,7 @@ interface DayCellProps {
   onPostClick: (post: PostDay) => void;
   onEmptyClick: () => void;
   onPastDateBlocked?: () => void;
-  // Drag-and-drop props
+  // Drag-and-drop props (for moving posts)
   isDragging: boolean;
   isDropTarget: boolean;
   canDrop: boolean;
@@ -279,6 +290,11 @@ interface DayCellProps {
   onDragOver: () => void;
   onDragLeave: () => void;
   onDrop: () => void;
+  // File drop props (for dropping images from filesystem)
+  isFileDropTarget: boolean;
+  onFileDragOver: () => void;
+  onFileDragLeave: () => void;
+  onFileDrop: (file: File) => void;
 }
 
 function DayCell({
@@ -302,13 +318,34 @@ function DayCell({
   onDragOver,
   onDragLeave,
   onDrop,
+  isFileDropTarget,
+  onFileDragOver,
+  onFileDragLeave,
+  onFileDrop,
 }: DayCellProps) {
   const hasPosts = posts.length > 0;
   const firstPost = posts[0];
 
+  // Check if drag event contains files
+  const hasFiles = (e: React.DragEvent) => {
+    return e.dataTransfer.types.includes("Files");
+  };
+
+  // Any visible future date can accept image drops
+  const canAcceptFileDrop = !isPast;
+
   // Handle drag events on the cell
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+
+    // Check if this is a file drop (from filesystem) - allow on any future date
+    if (hasFiles(e) && canAcceptFileDrop) {
+      e.dataTransfer.dropEffect = "copy";
+      onFileDragOver();
+      return;
+    }
+
+    // Otherwise, it's a post drag
     if (canDrop) {
       onDragOver();
     }
@@ -317,10 +354,23 @@ function DayCell({
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     onDragLeave();
+    onFileDragLeave();
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+
+    // Check if this is a file drop - allow on any future date
+    if (hasFiles(e) && canAcceptFileDrop) {
+      const files = Array.from(e.dataTransfer.files);
+      const imageFile = files.find(f => f.type.startsWith("image/"));
+      if (imageFile) {
+        onFileDrop(imageFile);
+        return;
+      }
+    }
+
+    // Otherwise, it's a post drop
     if (canDrop) {
       onDrop();
     }
@@ -343,6 +393,7 @@ function DayCell({
         ${isCurrentMonth ? "bg-[var(--bg-secondary)]" : "bg-[var(--bg-primary)]"}
         ${isPast && isCurrentMonth ? "bg-[var(--bg-primary)] opacity-60" : ""}
         ${isDropTarget && canDrop ? "bg-[var(--accent-primary)]/10 ring-2 ring-inset ring-[var(--accent-primary)]" : ""}
+        ${isFileDropTarget && canAcceptFileDrop ? "bg-emerald-500/10 ring-2 ring-inset ring-emerald-500" : ""}
         ${isDragging && !canDrop && !isPast ? "opacity-50" : ""}
         ${isPast ? "cursor-not-allowed" : ""}
       `}
@@ -373,8 +424,8 @@ function DayCell({
           )}
         </div>
 
-        {/* Add button - appears on hover when no posts and not past */}
-        {!hasPosts && isCurrentMonth && !isPast && (
+        {/* Add button - appears on hover when no posts and not past (any visible future date) */}
+        {!hasPosts && !isPast && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -410,20 +461,33 @@ function DayCell({
         </div>
       )}
 
-      {/* Empty state - clickable (only for non-past dates) */}
-      {!hasPosts && isCurrentMonth && !isPast && (
+      {/* Empty state - clickable for any future date */}
+      {!hasPosts && !isPast && (
         <div
           onClick={handleEmptyPastClick}
-          className="h-16 flex items-center justify-center rounded-md border-2 border-dashed border-transparent hover:border-[var(--border-primary)] cursor-pointer transition-colors group-hover:border-[var(--border-primary)]"
+          className={`
+            h-16 flex flex-col items-center justify-center rounded-md border-2 border-dashed cursor-pointer transition-colors
+            ${isFileDropTarget
+              ? "border-emerald-500 bg-emerald-500/5"
+              : "border-transparent hover:border-[var(--border-primary)] group-hover:border-[var(--border-primary)]"
+            }
+          `}
         >
-          <span className="text-xs text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity">
-            Click to add
-          </span>
+          {isFileDropTarget ? (
+            <>
+              <Upload className="w-5 h-5 text-emerald-600 mb-1" />
+              <span className="text-xs text-emerald-600 font-medium">Drop image</span>
+            </>
+          ) : (
+            <span className="text-xs text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity">
+              {isCurrentMonth ? "Click to add" : "Drop image"}
+            </span>
+          )}
         </div>
       )}
 
       {/* Past date empty state - not clickable */}
-      {!hasPosts && isCurrentMonth && isPast && (
+      {!hasPosts && isPast && (
         <div
           onClick={() => onPastDateBlocked?.()}
           className="h-16 flex items-center justify-center rounded-md cursor-not-allowed"
